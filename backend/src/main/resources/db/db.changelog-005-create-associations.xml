@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="005-create-associations" author="musicapp">
+        <!-- Album-Artista many-to-many -->
+        <createTable tableName="album_artista">
+            <column name="album_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="artista_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="album_artista" columnNames="album_id, artista_id"/>
+
+        <addForeignKeyConstraint
+                baseTableName="album_artista"
+                baseColumnNames="album_id"
+                referencedTableName="album"
+                referencedColumnNames="id"
+                constraintName="fk_album_artista_album"/>
+
+        <addForeignKeyConstraint
+                baseTableName="album_artista"
+                baseColumnNames="artista_id"
+                referencedTableName="artista"
+                referencedColumnNames="id"
+                constraintName="fk_album_artista_artista"/>
+
+        <!-- Canzone-Artista many-to-many -->
+        <createTable tableName="canzone_artista">
+            <column name="canzone_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="artista_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="canzone_artista" columnNames="canzone_id, artista_id"/>
+
+        <addForeignKeyConstraint
+                baseTableName="canzone_artista"
+                baseColumnNames="canzone_id"
+                referencedTableName="canzone"
+                referencedColumnNames="id"
+                constraintName="fk_canzone_artista_canzone"/>
+
+        <addForeignKeyConstraint
+                baseTableName="canzone_artista"
+                baseColumnNames="artista_id"
+                referencedTableName="artista"
+                referencedColumnNames="id"
+                constraintName="fk_canzone_artista_artista"/>
+
+        <rollback>
+            <dropForeignKeyConstraint baseTableName="canzone_artista" constraintName="fk_canzone_artista_artista"/>
+            <dropForeignKeyConstraint baseTableName="canzone_artista" constraintName="fk_canzone_artista_canzone"/>
+            <dropTable tableName="canzone_artista"/>
+
+            <dropForeignKeyConstraint baseTableName="album_artista" constraintName="fk_album_artista_artista"/>
+            <dropForeignKeyConstraint baseTableName="album_artista" constraintName="fk_album_artista_album"/>
+            <dropTable tableName="album_artista"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

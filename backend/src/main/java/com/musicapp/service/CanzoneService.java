@@ -1,0 +1,131 @@
+package com.musicapp.service;
+
+import com.musicapp.dto.AlbumDTO;
+import com.musicapp.dto.ArtistaDTO;
+import com.musicapp.dto.CanzoneDTO;
+import com.musicapp.entity.Album;
+import com.musicapp.entity.Artista;
+import com.musicapp.entity.Canzone;
+import com.musicapp.repository.AlbumRepository;
+import com.musicapp.repository.ArtistaRepository;
+import com.musicapp.repository.CanzoneRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class CanzoneService {
+
+    private final CanzoneRepository canzoneRepository;
+    private final AlbumRepository albumRepository;
+    private final ArtistaRepository artistaRepository;
+
+    public List<CanzoneDTO> getAllCanzoni() {
+        return canzoneRepository.findAll().stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    public CanzoneDTO getCanzoneById(Long id) {
+        return canzoneRepository.findById(id)
+                .map(this::toDTO)
+                .orElse(null);
+    }
+
+    public CanzoneDTO createCanzone(CanzoneDTO canzoneDTO) {
+        Canzone canzone = toEntity(canzoneDTO);
+        Canzone saved = canzoneRepository.save(canzone);
+        return toDTO(saved);
+    }
+
+    public CanzoneDTO updateCanzone(Long id, CanzoneDTO canzoneDTO) {
+        Canzone canzone = canzoneRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Canzone non trovata"));
+        
+        canzone.setUrlFileAudio(canzoneDTO.getUrlFileAudio());
+        canzone.setAnno(canzoneDTO.getAnno());
+        canzone.setUrlImmagine(canzoneDTO.getUrlImmagine());
+        
+        if (canzoneDTO.getAlbum() != null && canzoneDTO.getAlbum().getId() != null) {
+            Album album = albumRepository.findById(canzoneDTO.getAlbum().getId())
+                    .orElseThrow(() -> new RuntimeException("Album non trovato"));
+            canzone.setAlbum(album);
+        }
+        
+        if (canzoneDTO.getArtisti() != null) {
+            List<Artista> artisti = canzoneDTO.getArtisti().stream()
+                    .map(dto -> artistaRepository.findById(dto.getId())
+                            .orElseThrow(() -> new RuntimeException("Artista non trovato")))
+                    .collect(Collectors.toList());
+            canzone.setArtisti(new java.util.HashSet<>(artisti));
+        }
+        
+        Canzone updated = canzoneRepository.save(canzone);
+        return toDTO(updated);
+    }
+
+    public void deleteCanzone(Long id) {
+        canzoneRepository.deleteById(id);
+    }
+
+    private CanzoneDTO toDTO(Canzone canzone) {
+        AlbumDTO albumDTO = canzone.getAlbum() != null ? toAlbumDTO(canzone.getAlbum()) : null;
+        List<ArtistaDTO> artistiDTO = canzone.getArtisti().stream()
+                .map(this::toArtistaDTO)
+                .collect(Collectors.toList());
+        
+        return new CanzoneDTO(
+                canzone.getId(),
+                canzone.getUrlFileAudio(),
+                canzone.getAnno(),
+                canzone.getUrlImmagine(),
+                albumDTO,
+                artistiDTO
+        );
+    }
+
+    private AlbumDTO toAlbumDTO(Album album) {
+        return new AlbumDTO(
+                album.getId(),
+                album.getNome(),
+                album.getAnno(),
+                album.getUrlImmagine(),
+                null
+        );
+    }
+
+    private ArtistaDTO toArtistaDTO(Artista artista) {
+        return new ArtistaDTO(
+                artista.getId(),
+                artista.getNome(),
+                artista.getCognome(),
+                artista.getUrlImmagine()
+        );
+    }
+
+    private Canzone toEntity(CanzoneDTO dto) {
+        Canzone canzone = new Canzone();
+        canzone.setUrlFileAudio(dto.getUrlFileAudio());
+        canzone.setAnno(dto.getAnno());
+        canzone.setUrlImmagine(dto.getUrlImmagine());
+        
+        if (dto.getAlbum() != null && dto.getAlbum().getId() != null) {
+            Album album = albumRepository.findById(dto.getAlbum().getId())
+                    .orElseThrow(() -> new RuntimeException("Album non trovato"));
+            canzone.setAlbum(album);
+        }
+        
+        if (dto.getArtisti() != null) {
+            List<Artista> artisti = dto.getArtisti().stream()
+                    .map(artistaDTO -> artistaRepository.findById(artistaDTO.getId())
+                            .orElseThrow(() -> new RuntimeException("Artista non trovato")))
+                    .collect(Collectors.toList());
+            canzone.setArtisti(new java.util.HashSet<>(artisti));
+        }
+        
+        return canzone;
+    }
+}
