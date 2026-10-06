@@ -18,6 +18,7 @@ public class AlbumService {
 
     private final AlbumRepository albumRepository;
     private final ArtistaRepository artistaRepository;
+    private final S3StorageService s3StorageService;
 
     public List<AlbumDTO> getAllAlbums() {
         return albumRepository.findAll().stream()
@@ -41,6 +42,11 @@ public class AlbumService {
         Album album = albumRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Album non trovato"));
         
+        // Se l'immagine è cambiata, elimina la vecchia da S3
+        if (album.getUrlImmagine() != null && !album.getUrlImmagine().equals(albumDTO.getUrlImmagine())) {
+            s3StorageService.deleteFileByUrlOrKey(album.getUrlImmagine());
+        }
+
         album.setNome(albumDTO.getNome());
         album.setAnno(albumDTO.getAnno());
         album.setUrlImmagine(albumDTO.getUrlImmagine());
@@ -58,7 +64,12 @@ public class AlbumService {
     }
 
     public void deleteAlbum(Long id) {
-        albumRepository.deleteById(id);
+        albumRepository.findById(id).ifPresent(album -> {
+            if (album.getUrlImmagine() != null) {
+                s3StorageService.deleteFileByUrlOrKey(album.getUrlImmagine());
+            }
+            albumRepository.delete(album);
+        });
     }
 
     private AlbumDTO toDTO(Album album) {
@@ -79,7 +90,6 @@ public class AlbumService {
         return new ArtistaDTO(
                 artista.getId(),
                 artista.getNome(),
-                artista.getCognome(),
                 artista.getUrlImmagine()
         );
     }

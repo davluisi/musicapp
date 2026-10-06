@@ -12,5 +12,6 @@
     <include file="db.changelog-006-add-nome-to-canzone.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-007-create-playlist.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-008-create-playlist-canzone.xml" relativeToChangelogFile="true"/>
+    <include file="db.changelog-009-drop-cognome-from-artista.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

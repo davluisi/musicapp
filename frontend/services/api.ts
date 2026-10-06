@@ -39,7 +39,6 @@ export const getMediaUrl = (url?: string | null): string => {
 export interface Artist {
   id: number;
   nome: string;
-  cognome: string;
   urlImmagine?: string;
 }
 
@@ -201,6 +200,7 @@ export const uploadApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      transformRequest: (data) => data, // previene che axios modifichi FormData su React Native
     });
     return response.data.data;
   },

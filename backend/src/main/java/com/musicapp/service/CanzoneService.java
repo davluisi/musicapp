@@ -22,6 +22,7 @@ public class CanzoneService {
     private final CanzoneRepository canzoneRepository;
     private final AlbumRepository albumRepository;
     private final ArtistaRepository artistaRepository;
+    private final S3StorageService s3StorageService;
 
     public List<CanzoneDTO> getAllCanzoni() {
         return canzoneRepository.findAll().stream()
@@ -45,6 +46,16 @@ public class CanzoneService {
         Canzone canzone = canzoneRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Canzone non trovata"));
         
+        // Se l'audio è cambiato, rimuovi il vecchio da S3
+        if (canzone.getUrlFileAudio() != null && !canzone.getUrlFileAudio().equals(canzoneDTO.getUrlFileAudio())) {
+            s3StorageService.deleteFileByUrlOrKey(canzone.getUrlFileAudio());
+        }
+
+        // Se l'immagine è cambiata, rimuovi la vecchia da S3
+        if (canzone.getUrlImmagine() != null && !canzone.getUrlImmagine().equals(canzoneDTO.getUrlImmagine())) {
+            s3StorageService.deleteFileByUrlOrKey(canzone.getUrlImmagine());
+        }
+
         canzone.setNome(canzoneDTO.getNome());
         canzone.setUrlFileAudio(canzoneDTO.getUrlFileAudio());
         canzone.setAnno(canzoneDTO.getAnno());
@@ -69,7 +80,15 @@ public class CanzoneService {
     }
 
     public void deleteCanzone(Long id) {
-        canzoneRepository.deleteById(id);
+        canzoneRepository.findById(id).ifPresent(canzone -> {
+            if (canzone.getUrlFileAudio() != null) {
+                s3StorageService.deleteFileByUrlOrKey(canzone.getUrlFileAudio());
+            }
+            if (canzone.getUrlImmagine() != null) {
+                s3StorageService.deleteFileByUrlOrKey(canzone.getUrlImmagine());
+            }
+            canzoneRepository.delete(canzone);
+        });
     }
 
     private CanzoneDTO toDTO(Canzone canzone) {
@@ -103,7 +122,6 @@ public class CanzoneService {
         return new ArtistaDTO(
                 artista.getId(),
                 artista.getNome(),
-                artista.getCognome(),
                 artista.getUrlImmagine()
         );
     }

@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 public class ArtistaService {
 
     private final ArtistaRepository artistaRepository;
+    private final S3StorageService s3StorageService;
 
     public List<ArtistaDTO> getAllArtisti() {
         return artistaRepository.findAll().stream()
@@ -37,8 +38,12 @@ public class ArtistaService {
         Artista artista = artistaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Artista non trovato"));
         
+        // Se l'immagine è cambiata, elimina la vecchia da S3
+        if (artista.getUrlImmagine() != null && !artista.getUrlImmagine().equals(artistaDTO.getUrlImmagine())) {
+            s3StorageService.deleteFileByUrlOrKey(artista.getUrlImmagine());
+        }
+
         artista.setNome(artistaDTO.getNome());
-        artista.setCognome(artistaDTO.getCognome());
         artista.setUrlImmagine(artistaDTO.getUrlImmagine());
         
         Artista updated = artistaRepository.save(artista);
@@ -46,14 +51,18 @@ public class ArtistaService {
     }
 
     public void deleteArtista(Long id) {
-        artistaRepository.deleteById(id);
+        artistaRepository.findById(id).ifPresent(artista -> {
+            if (artista.getUrlImmagine() != null) {
+                s3StorageService.deleteFileByUrlOrKey(artista.getUrlImmagine());
+            }
+            artistaRepository.delete(artista);
+        });
     }
 
     private ArtistaDTO toDTO(Artista artista) {
         return new ArtistaDTO(
                 artista.getId(),
                 artista.getNome(),
-                artista.getCognome(),
                 artista.getUrlImmagine()
         );
     }
@@ -61,7 +70,6 @@ public class ArtistaService {
     private Artista toEntity(ArtistaDTO dto) {
         Artista artista = new Artista();
         artista.setNome(dto.getNome());
-        artista.setCognome(dto.getCognome());
         artista.setUrlImmagine(dto.getUrlImmagine());
         return artista;
     }

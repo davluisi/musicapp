@@ -12,13 +12,15 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus } from 'expo-audio';
 import { songApi, artistApi, albumApi, playlistApi, uploadApi, getMediaUrl, Song, Artist, Album, Playlist } from '../services/api';
 import { useAuth } from '../services/AuthContext';
+import { useAudio } from '../services/AudioContext';
 import { theme } from '../services/theme';
 
 export function SongsScreen() {
@@ -155,28 +157,15 @@ export function SongsScreen() {
     }
   };
 
-  // Currently playing state & Sound management
-  const [activeSongId, setActiveSongId] = useState<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [player, setPlayer] = useState<AudioPlayer | null>(null);
-  const playerRef = useRef<AudioPlayer | null>(null);
+  const {
+    activeSong,
+    isPlaying,
+    togglePlaySong,
+    openSongDetail,
+    getSongTitle,
+  } = useAudio();
 
-  useEffect(() => {
-    // Configure audio mode for playback
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      interruptionMode: 'doNotMix',
-      shouldPlayInBackground: true,
-      allowsRecording: false,
-    }).catch(err => console.warn('Error setting audio mode:', err));
-
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.remove();
-        playerRef.current = null;
-      }
-    };
-  }, []);
+  const activeSongId = activeSong ? activeSong.id : null;
 
   useEffect(() => {
     loadData();
@@ -226,10 +215,20 @@ export function SongsScreen() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setUploadingImage(true);
       try {
-        const uri = result.assets[0].uri;
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const file = new File([blob], 'song.jpg', { type: 'image/jpeg' });
+        const asset = result.assets[0];
+        let file: any;
+
+        if (Platform.OS === 'web') {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          file = new File([blob], 'song.jpg', { type: asset.mimeType || 'image/jpeg' });
+        } else {
+          file = {
+            uri: asset.uri,
+            name: asset.fileName || 'song.jpg',
+            type: asset.mimeType || 'image/jpeg',
+          };
+        }
 
         const uploadedUrl = await uploadApi.uploadImage('canzone', file);
         setUrlImmagine(uploadedUrl);
@@ -290,124 +289,43 @@ export function SongsScreen() {
   };
 
 
-  const listenerSubRef = useRef<{ remove: () => void } | null>(null);
 
-  const togglePlaySong = async (song: Song) => {
-    if (!song.urlFileAudio) {
-      Alert.alert('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+  const openPlaylistPickerForSong = async (song: Song) => {
+    if (!isLoggedIn || !user) {
+      Alert.alert('Accesso Richiesto', 'Devi aver effettuato l\'accesso per gestire le playlist.');
       return;
     }
-
-    const currentPlayer = playerRef.current;
-
-    // Se è la stessa canzone attiva: commuta play/pausa
-    if (activeSongId === song.id && currentPlayer) {
-      console.log('Toggling same song play/pause. Current isPlaying:', isPlaying);
-      if (isPlaying) {
-        currentPlayer.pause();
-        setIsPlaying(false);
-      } else {
-        currentPlayer.play();
-        setIsPlaying(true);
-      }
-      return;
-    }
-
-    // Se è una traccia diversa (o la prima traccia):
+    setEditingSong(song);
     try {
-      // 1. Arresta e rimuovi il listener del player precedente
-      if (listenerSubRef.current) {
-        listenerSubRef.current.remove();
-        listenerSubRef.current = null;
-      }
-      if (currentPlayer) {
-        try {
-          currentPlayer.pause();
-          currentPlayer.remove();
-        } catch (e) {
-          console.warn('Error releasing previous player:', e);
-        }
-        playerRef.current = null;
-        setPlayer(null);
-      }
-
-      setActiveSongId(song.id);
-      setIsPlaying(true);
-
-      const audioStreamUrl = getMediaUrl(song.urlFileAudio);
-      console.log('Starting playback for song:', song.nome, 'Stream URL:', audioStreamUrl);
-
-      const newPlayer = createAudioPlayer(audioStreamUrl, {
-        downloadFirst: false,
-      });
-      playerRef.current = newPlayer;
-      setPlayer(newPlayer);
-
-      const sub = newPlayer.addListener('playbackStatusUpdate', (status: AudioStatus) => {
-        // Se si verifica un errore o il brano termina, reimposta isPlaying a false
-        if (status.error) {
-          console.error('Audio playback error in status:', status.error);
-          Alert.alert('Errore Audio', 'Errore durante la riproduzione: ' + status.error);
-          setIsPlaying(false);
-          return;
-        }
-        if (status.didJustFinish) {
-          setIsPlaying(false);
-          return;
-        }
-
-        // Quando il player è caricato (ready), aggiorna fedelmente lo stato di riproduzione
-        if (status.isLoaded) {
-          setIsPlaying(status.playing);
-        }
-      });
-      listenerSubRef.current = sub;
-
-      newPlayer.play();
+      const playlistIds = await playlistApi.getPlaylistIdsForCanzone(song.id, user.id);
+      setSelectedPlaylists(playlistIds);
+      setPlaylistPickerVisible(true);
     } catch (err) {
-      console.error('Error loading or playing song:', err);
-      Alert.alert('Errore Riproduzione', 'Impossibile riprodurre il file audio.');
-      setIsPlaying(false);
+      console.error('Error fetching playlist ids for song', err);
+      Alert.alert('Errore', 'Impossibile caricare le playlist.');
     }
   };
 
-  const handleMiniPlayerToggle = () => {
-    const currentPlayer = playerRef.current;
-    if (!currentPlayer) {
-      if (activeSong) {
-        togglePlaySong(activeSong);
-      }
-      return;
+  const handleSavePlaylistsForSong = async () => {
+    if (!editingSong || !user) return;
+    try {
+      await playlistApi.syncCanzonePlaylists(editingSong.id, user.id, selectedPlaylists);
+      setPlaylistPickerVisible(false);
+      Alert.alert('Successo', 'Playlist aggiornate con successo!');
+    } catch (err) {
+      console.error('Error syncing playlists:', err);
+      Alert.alert('Errore', 'Impossibile aggiornare le playlist');
     }
-
-    if (isPlaying) {
-      currentPlayer.pause();
-      setIsPlaying(false);
-    } else {
-      currentPlayer.play();
-      setIsPlaying(true);
-    }
-  };
-
-  // Helper per mostrare il titolo della canzone: prioritizza il campo nome, altrimenti estrae dall'URL
-  const getSongTitle = (song: Song) => {
-    if (song.nome && song.nome.trim()) return song.nome;
-    if (!song.urlFileAudio) return 'Traccia Audio';
-    const parts = song.urlFileAudio.split('/');
-    const last = parts[parts.length - 1];
-    return decodeURIComponent(last.replace(/\.[^/.]+$/, '').replace(/_/g, ' '));
   };
 
   const filteredSongs = songs.filter(song => {
     const titleMatch = getSongTitle(song).toLowerCase().includes(searchQuery.toLowerCase());
     const artistMatch = song.artisti?.some(a =>
-      `${a.nome} ${a.cognome}`.toLowerCase().includes(searchQuery.toLowerCase())
+      a.nome.toLowerCase().includes(searchQuery.toLowerCase())
     );
     const albumMatch = song.album?.nome.toLowerCase().includes(searchQuery.toLowerCase());
     return titleMatch || artistMatch || albumMatch;
   });
-
-  const activeSong = songs.find(s => s.id === activeSongId);
 
   const renderSong = ({ item }: { item: Song }) => {
     const isThisPlaying = activeSongId === item.id && isPlaying;
@@ -416,7 +334,7 @@ export function SongsScreen() {
     return (
       <TouchableOpacity
         style={[styles.songCard, isThisSelected && styles.songCardActive]}
-        onPress={() => togglePlaySong(item)}
+        onPress={() => openSongDetail(item)}
         activeOpacity={0.8}
       >
         <View style={styles.songCoverContainer}>
@@ -427,13 +345,6 @@ export function SongsScreen() {
               <Ionicons name="musical-note" size={24} color={theme.colors.textMuted} />
             </View>
           )}
-          <View style={[styles.playOverlay, isThisPlaying && styles.playOverlayActive]}>
-            <Ionicons
-              name={isThisPlaying ? 'pause' : 'play'}
-              size={18}
-              color={isThisPlaying ? '#000' : '#fff'}
-            />
-          </View>
         </View>
 
         <View style={styles.songInfo}>
@@ -445,21 +356,26 @@ export function SongsScreen() {
           </Text>
           <Text style={styles.songArtists} numberOfLines={1}>
             {item.artisti && item.artisti.length > 0
-              ? item.artisti.map(a => `${a.nome} ${a.cognome}`).join(', ')
+              ? item.artisti.map(a => a.nome).join(', ')
               : 'Artista sconosciuto'}
             {item.album ? ` • ${item.album.nome}` : ''}
           </Text>
         </View>
 
+        {/* Play/Pause Button on the right replacing the pencil */}
         <TouchableOpacity
-          style={styles.actionBtn}
+          style={styles.cardPlayBtn}
           onPress={(e) => {
             e.stopPropagation();
-            openEditModal(item);
+            togglePlaySong(item, true);
           }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="pencil-outline" size={18} color={theme.colors.primary} />
+          <Ionicons
+            name={isThisPlaying ? 'pause-circle' : 'play-circle'}
+            size={34}
+            color={theme.colors.primary}
+          />
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -476,7 +392,7 @@ export function SongsScreen() {
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={20} color="#000" />
-          <Text style={styles.addButtonText}>+ Nuova</Text>
+          <Text style={styles.addButtonText}>Nuova</Text>
         </TouchableOpacity>
       </View>
 
@@ -526,53 +442,21 @@ export function SongsScreen() {
               <Ionicons name="musical-notes-outline" size={64} color={theme.colors.surfaceBorder} />
               <Text style={styles.emptyTitle}>Nessuna canzone presente</Text>
               <Text style={styles.emptySubtitle}>
-                Scarica la prima traccia da YouTube cliccando su "Aggiungi"
+                Scarica la prima traccia da YouTube cliccando su "Nuova"
               </Text>
             </View>
           }
         />
       )}
 
-      {/* Sticky Bottom Mini Player */}
-      {activeSong && (
-        <View style={styles.miniPlayer}>
-          <View style={styles.miniPlayerLeft}>
-            {activeSong.urlImmagine ? (
-              <Image source={{ uri: getMediaUrl(activeSong.urlImmagine) }} style={styles.miniPlayerCover} />
-            ) : (
-              <View style={styles.miniPlayerPlaceholder}>
-                <Ionicons name="musical-note" size={18} color={theme.colors.primary} />
-              </View>
-            )}
-            <View style={styles.miniPlayerTextContainer}>
-              <Text style={styles.miniPlayerTitle} numberOfLines={1}>
-                {getSongTitle(activeSong)}
-              </Text>
-              <Text style={styles.miniPlayerArtist} numberOfLines={1}>
-                {activeSong.artisti && activeSong.artisti.length > 0
-                  ? activeSong.artisti.map(a => `${a.nome} ${a.cognome}`).join(', ')
-                  : 'MusicApp Player'}
-              </Text>
-            </View>
-          </View>
 
-          <View style={styles.miniPlayerControls}>
-            <TouchableOpacity onPress={handleMiniPlayerToggle} style={styles.miniPlayerPlayBtn}>
-              <Ionicons
-                name={isPlaying ? 'pause' : 'play'}
-                size={22}
-                color="#000"
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {/* Modal Add Song */}
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -731,7 +615,7 @@ export function SongsScreen() {
                         <View key={a.id} style={styles.selectedBadge}>
                           <Ionicons name="person" size={14} color={theme.colors.primary} />
                           <Text style={styles.selectedBadgeText} numberOfLines={1}>
-                            {a.nome} {a.cognome}
+                            {a.nome}
                           </Text>
                           <TouchableOpacity onPress={() => toggleArtist(a.id)}>
                             <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
@@ -816,6 +700,7 @@ export function SongsScreen() {
         visible={albumPickerVisible}
         animationType="fade"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setAlbumPickerVisible(false)}
       >
         <View style={styles.pickerModalOverlay}>
@@ -927,6 +812,7 @@ export function SongsScreen() {
         visible={artistPickerVisible}
         animationType="fade"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setArtistPickerVisible(false)}
       >
         <View style={styles.pickerModalOverlay}>
@@ -957,7 +843,7 @@ export function SongsScreen() {
 
             <ScrollView style={styles.pickerListScroll} showsVerticalScrollIndicator={false}>
               {artists
-                .filter(a => `${a.nome} ${a.cognome}`.toLowerCase().includes(artistSearchQuery.toLowerCase()))
+                .filter(a => a.nome.toLowerCase().includes(artistSearchQuery.toLowerCase()))
                 .map(artist => {
                   const isSelected = selectedArtists.includes(artist.id);
                   return (
@@ -980,7 +866,7 @@ export function SongsScreen() {
                       </View>
                       <View style={styles.pickerItemTextCol}>
                         <Text style={[styles.pickerItemTitle, isSelected && styles.pickerItemTitleSelected]}>
-                          {artist.nome} {artist.cognome}
+                          {artist.nome}
                         </Text>
                         <Text style={styles.pickerItemSubtitle}>Artista</Text>
                       </View>
@@ -1009,6 +895,7 @@ export function SongsScreen() {
         visible={playlistPickerVisible}
         animationType="fade"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setPlaylistPickerVisible(false)}
       >
         <View style={styles.pickerModalOverlay}>
@@ -1747,4 +1634,185 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  cardPlayBtn: {
+    padding: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  /* Full screen / PageSheet Detail Modal Styles */
+  detailContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: 20,
+    justifyContent: 'space-between',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  detailHeaderBtn: {
+    padding: 6,
+  },
+  detailHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  detailCoverSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 20,
+  },
+  detailLargeCover: {
+    width: 290,
+    height: 290,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  detailLargeCoverPlaceholder: {
+    width: 290,
+    height: 290,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surfaceHighlight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+  },
+  detailMetaSection: {
+    marginBottom: 20,
+  },
+  detailSongTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginBottom: 6,
+  },
+  detailSongArtists: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: theme.colors.primary,
+    marginBottom: 4,
+  },
+  detailSongAlbum: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
+  },
+  detailControlsSection: {
+    marginTop: 10,
+  },
+  detailProgressBarTrack: {
+    height: 6,
+    backgroundColor: theme.colors.surfaceHighlight,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  detailProgressBarFill: {
+    height: '100%',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 3,
+  },
+  detailTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailTimeText: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    fontWeight: '500',
+  },
+  detailPlayRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  detailPlayBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  /* 3 Dots Options Modal Styles */
+  optionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  optionsContent: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 25,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+  },
+  optionsHeader: {
+    paddingBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.surfaceBorder,
+  },
+  optionsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  optionsSubtitle: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 14,
+  },
+  optionRowDestructive: {
+    marginTop: 4,
+  },
+  optionRowText: {
+    fontSize: 16,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  optionRowTextDestructive: {
+    color: theme.colors.danger,
+  },
+  optionCancelBtn: {
+    marginTop: 14,
+    paddingVertical: 13,
+    backgroundColor: theme.colors.surfaceHighlight,
+    borderRadius: theme.borderRadius.full,
+    alignItems: 'center',
+  },
+  optionCancelText: {
+    color: theme.colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
+

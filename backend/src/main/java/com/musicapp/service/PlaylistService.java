@@ -18,6 +18,7 @@ public class PlaylistService {
     private final PlaylistRepository playlistRepository;
     private final UtenteRepository utenteRepository;
     private final com.musicapp.repository.CanzoneRepository canzoneRepository;
+    private final S3StorageService s3StorageService;
 
     public List<Long> getPlaylistIdsForCanzone(Long canzoneId, Long utenteId) {
         return playlistRepository.findPlaylistIdsByCanzoneIdAndUtenteId(canzoneId, utenteId);
@@ -91,6 +92,11 @@ public class PlaylistService {
         Playlist playlist = playlistRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Playlist non trovata"));
 
+        // Se l'immagine è cambiata, elimina la vecchia da S3
+        if (playlist.getUrlImmagine() != null && !playlist.getUrlImmagine().equals(playlistDTO.getUrlImmagine())) {
+            s3StorageService.deleteFileByUrlOrKey(playlist.getUrlImmagine());
+        }
+
         playlist.setNome(playlistDTO.getNome());
         playlist.setUrlImmagine(playlistDTO.getUrlImmagine());
 
@@ -99,7 +105,12 @@ public class PlaylistService {
     }
 
     public void deletePlaylist(Long id) {
-        playlistRepository.deleteById(id);
+        playlistRepository.findById(id).ifPresent(playlist -> {
+            if (playlist.getUrlImmagine() != null) {
+                s3StorageService.deleteFileByUrlOrKey(playlist.getUrlImmagine());
+            }
+            playlistRepository.delete(playlist);
+        });
     }
 
     private PlaylistDTO toDTO(Playlist playlist) {

@@ -12,16 +12,19 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { playlistApi, uploadApi, Playlist } from '../services/api';
+import { playlistApi, uploadApi, getMediaUrl, Playlist } from '../services/api';
 import { useAuth } from '../services/AuthContext';
+import { useAudio } from '../services/AudioContext';
 import { theme } from '../services/theme';
 
 export function PlaylistsScreen() {
   const { user, isLoggedIn } = useAuth();
+  const { activeSong } = useAudio();
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,10 +99,20 @@ export function PlaylistsScreen() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setUploading(true);
       try {
-        const uri = result.assets[0].uri;
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const file = new File([blob], 'playlist.jpg', { type: 'image/jpeg' });
+        const asset = result.assets[0];
+        let file: any;
+
+        if (Platform.OS === 'web') {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          file = new File([blob], 'playlist.jpg', { type: asset.mimeType || 'image/jpeg' });
+        } else {
+          file = {
+            uri: asset.uri,
+            name: asset.fileName || 'playlist.jpg',
+            type: asset.mimeType || 'image/jpeg',
+          };
+        }
 
         const uploadedUrl = await uploadApi.uploadImage('playlist', file);
         setUrlImmagine(uploadedUrl);
@@ -176,7 +189,7 @@ export function PlaylistsScreen() {
     <View style={styles.playlistCard}>
       <View style={styles.coverWrapper}>
         {item.urlImmagine ? (
-          <Image source={{ uri: item.urlImmagine }} style={styles.playlistCover} />
+          <Image source={{ uri: getMediaUrl(item.urlImmagine) }} style={styles.playlistCover} />
         ) : (
           <View style={styles.playlistCoverPlaceholder}>
             <Ionicons name="musical-notes" size={30} color={theme.colors.textMuted} />
@@ -244,7 +257,10 @@ export function PlaylistsScreen() {
           data={filteredPlaylists}
           renderItem={renderPlaylist}
           keyExtractor={item => item.id.toString()}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            activeSong ? { paddingBottom: 110 } : { paddingBottom: 30 },
+          ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -270,6 +286,7 @@ export function PlaylistsScreen() {
         visible={modalVisible}
         animationType="slide"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -291,7 +308,7 @@ export function PlaylistsScreen() {
                 disabled={uploading}
               >
                 {urlImmagine ? (
-                  <Image source={{ uri: urlImmagine }} style={styles.modalCoverPreview} />
+                  <Image source={{ uri: getMediaUrl(urlImmagine) }} style={styles.modalCoverPreview} />
                 ) : (
                   <View style={styles.modalCoverPlaceholder}>
                     <Ionicons name="image-outline" size={32} color={theme.colors.textSecondary} />

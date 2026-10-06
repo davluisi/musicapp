@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { authApi, uploadApi } from '../services/api';
+import { authApi, uploadApi, getMediaUrl } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { theme } from '../services/theme';
 
@@ -114,10 +114,20 @@ export function ProfileScreen() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setUploadingImage(true);
       try {
-        const uri = result.assets[0].uri;
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+        const asset = result.assets[0];
+        let file: any;
+
+        if (Platform.OS === 'web') {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          file = new File([blob], 'avatar.jpg', { type: asset.mimeType || 'image/jpeg' });
+        } else {
+          file = {
+            uri: asset.uri,
+            name: asset.fileName || 'avatar.jpg',
+            type: asset.mimeType || 'image/jpeg',
+          };
+        }
 
         const uploadedUrl = await uploadApi.uploadImage('profile', file);
         setProfileImageUri(uploadedUrl);
@@ -200,7 +210,7 @@ export function ProfileScreen() {
           <View style={styles.profileCard}>
             <View style={styles.avatarWrapper}>
               {user.urlImmagineProfilo ? (
-                <Image source={{ uri: user.urlImmagineProfilo }} style={styles.avatarImage} />
+                <Image source={{ uri: getMediaUrl(user.urlImmagineProfilo) }} style={styles.avatarImage} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarInitials}>
@@ -274,7 +284,7 @@ export function ProfileScreen() {
                     disabled={uploadingImage}
                   >
                     {profileImageUri ? (
-                      <Image source={{ uri: profileImageUri }} style={styles.pickerAvatarPreview} />
+                      <Image source={{ uri: getMediaUrl(profileImageUri) }} style={styles.pickerAvatarPreview} />
                     ) : (
                       <View style={styles.pickerAvatarPlaceholder}>
                         <Ionicons name="camera-outline" size={26} color={theme.colors.textSecondary} />

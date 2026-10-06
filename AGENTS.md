@@ -201,7 +201,7 @@ AWS Configuration:
 - urlImmagineProfilo is nullable
 
 ### Artista Entity
-- Fields: id, nome, cognome, urlImmagine
+- Fields: id, nome, urlImmagine
 - urlImmagine is nullable (stored in S3)
 - Many-to-many relationship with Album
 - Many-to-many relationship with Canzone

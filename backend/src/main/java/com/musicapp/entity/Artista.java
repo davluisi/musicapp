@@ -19,9 +19,6 @@ public class Artista {
     @Column(name = "nome", nullable = false)
     private String nome;
 
-    @Column(name = "cognome", nullable = false)
-    private String cognome;
-
     @Column(name = "url_immagine")
     private String urlImmagine;
 
@@ -54,14 +51,6 @@ public class Artista {
 
     public void setNome(String nome) {
         this.nome = nome;
-    }
-
-    public String getCognome() {
-        return cognome;
-    }
-
-    public void setCognome(String cognome) {
-        this.cognome = cognome;
     }
 
     public String getUrlImmagine() {
