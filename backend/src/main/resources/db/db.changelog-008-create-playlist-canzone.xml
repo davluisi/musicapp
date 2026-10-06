@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="008-create-playlist-canzone" author="musicapp">
+        <createTable tableName="playlist_canzone">
+            <column name="playlist_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="canzone_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="playlist_canzone" columnNames="playlist_id, canzone_id"/>
+
+        <addForeignKeyConstraint
+                baseTableName="playlist_canzone"
+                baseColumnNames="playlist_id"
+                referencedTableName="playlist"
+                referencedColumnNames="id"
+                constraintName="fk_playlist_canzone_playlist"/>
+
+        <addForeignKeyConstraint
+                baseTableName="playlist_canzone"
+                baseColumnNames="canzone_id"
+                referencedTableName="canzone"
+                referencedColumnNames="id"
+                constraintName="fk_playlist_canzone_canzone"/>
+
+        <rollback>
+            <dropForeignKeyConstraint baseTableName="playlist_canzone" constraintName="fk_playlist_canzone_canzone"/>
+            <dropForeignKeyConstraint baseTableName="playlist_canzone" constraintName="fk_playlist_canzone_playlist"/>
+            <dropTable tableName="playlist_canzone"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

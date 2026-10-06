@@ -45,6 +45,7 @@ public class CanzoneService {
         Canzone canzone = canzoneRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Canzone non trovata"));
         
+        canzone.setNome(canzoneDTO.getNome());
         canzone.setUrlFileAudio(canzoneDTO.getUrlFileAudio());
         canzone.setAnno(canzoneDTO.getAnno());
         canzone.setUrlImmagine(canzoneDTO.getUrlImmagine());
@@ -79,6 +80,7 @@ public class CanzoneService {
         
         return new CanzoneDTO(
                 canzone.getId(),
+                canzone.getNome(),
                 canzone.getUrlFileAudio(),
                 canzone.getAnno(),
                 canzone.getUrlImmagine(),
@@ -108,6 +110,7 @@ public class CanzoneService {
 
     private Canzone toEntity(CanzoneDTO dto) {
         Canzone canzone = new Canzone();
+        canzone.setNome(dto.getNome());
         canzone.setUrlFileAudio(dto.getUrlFileAudio());
         canzone.setAnno(dto.getAnno());
         canzone.setUrlImmagine(dto.getUrlImmagine());

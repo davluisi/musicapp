@@ -9,5 +9,8 @@
     <include file="db.changelog-004-create-album.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-003-create-canzone.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-005-create-associations.xml" relativeToChangelogFile="true"/>
+    <include file="db.changelog-006-add-nome-to-canzone.xml" relativeToChangelogFile="true"/>
+    <include file="db.changelog-007-create-playlist.xml" relativeToChangelogFile="true"/>
+    <include file="db.changelog-008-create-playlist-canzone.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>
