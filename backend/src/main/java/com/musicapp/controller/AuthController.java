@@ -3,6 +3,7 @@ package com.musicapp.controller;
 import com.musicapp.dto.ApiResponse;
 import com.musicapp.dto.LoginRequest;
 import com.musicapp.dto.RegisterRequest;
+import com.musicapp.dto.UpdateUtenteRequest;
 import com.musicapp.dto.UtenteDTO;
 import com.musicapp.service.AuthService;
 import jakarta.validation.Valid;
@@ -58,6 +59,20 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Errore recupero profilo: " + e.getMessage()));
+        }
+    }
+
+    @PutMapping("/profile/{id}")
+    public ResponseEntity<ApiResponse<UtenteDTO>> updateProfile(@PathVariable Long id, @Valid @RequestBody UpdateUtenteRequest request) {
+        try {
+            UtenteDTO user = authService.updateProfile(id, request);
+            return ResponseEntity.ok(ApiResponse.success(user, "Profilo aggiornato con successo"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Errore aggiornamento profilo: " + e.getMessage()));
         }
     }
 }

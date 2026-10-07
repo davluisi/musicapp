@@ -104,6 +104,10 @@ export const authApi = {
     const response = await api.get(`/auth/profile/${id}`);
     return response.data.data;
   },
+  updateProfile: async (id: number, data: Partial<User>): Promise<User> => {
+    const response = await api.put(`/auth/profile/${id}`, data);
+    return response.data.data;
+  },
 };
 
 export const artistApi = {
@@ -193,6 +197,9 @@ export interface YouTubeExtractResult {
   audioUrl: string;
   imageUrl?: string;
   title?: string;
+  year?: number;
+  artist?: string;
+  album?: string;
 }
 
 export const uploadApi = {

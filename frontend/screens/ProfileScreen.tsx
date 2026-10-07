@@ -19,9 +19,10 @@ import { theme } from '../services/theme';
 import { showDialog } from '../services/DialogContext';
 
 export function ProfileScreen() {
-  const { user, isLoggedIn, login, logout } = useAuth();
+  const { user, isLoggedIn, login, logout, updateUser } = useAuth();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   // Form states
   const [nome, setNome] = useState('');
@@ -198,6 +199,42 @@ export function ProfileScreen() {
     }
   };
 
+  const handleUpdateProfile = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const updatedUser = await authApi.updateProfile(user.id, {
+        nome: nome.trim() || undefined,
+        cognome: cognome.trim() || undefined,
+        email: email.trim() || undefined,
+        urlImmagineProfilo: profileImageUri || undefined,
+      });
+      updateUser(updatedUser);
+      setEditMode(false);
+      showDialog('Successo', 'Profilo aggiornato con successo!');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Impossibile aggiornare il profilo';
+      showDialog('Errore', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditMode = () => {
+    if (!user) return;
+    setNome(user.nome);
+    setCognome(user.cognome);
+    setEmail(user.email);
+    setProfileImageUri(user.urlImmagineProfilo || '');
+    setEditMode(true);
+  };
+
+  const closeEditMode = () => {
+    setEditMode(false);
+    resetForm();
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -219,7 +256,6 @@ export function ProfileScreen() {
                   </Text>
                 </View>
               )}
-              <View style={styles.onlineBadge} />
             </View>
 
             <Text style={styles.userName}>
@@ -227,30 +263,104 @@ export function ProfileScreen() {
             </Text>
             <Text style={styles.userEmail}>{user.email}</Text>
 
-            <View style={styles.statsContainer}>
-              <View style={styles.statBox}>
-                <Ionicons name="musical-notes" size={22} color={theme.colors.primary} />
-                <Text style={styles.statLabel}>Streaming</Text>
-                <Text style={styles.statValue}>Attivo</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Ionicons name="shield-checkmark" size={22} color={theme.colors.accent} />
-                <Text style={styles.statLabel}>Account</Text>
-                <Text style={styles.statValue}>Verificato</Text>
-              </View>
-            </View>
+            {editMode ? (
+              /* Edit Profile Form */
+              <View style={styles.editForm}>
+                <TouchableOpacity
+                  style={styles.avatarPickerButton}
+                  onPress={pickAvatar}
+                  disabled={uploadingImage}
+                >
+                  {profileImageUri ? (
+                    <Image source={{ uri: getMediaUrl(profileImageUri) }} style={styles.pickerAvatarPreview} />
+                  ) : (
+                    <View style={styles.pickerAvatarPlaceholder}>
+                      <Ionicons name="camera-outline" size={26} color={theme.colors.textSecondary} />
+                      <Text style={styles.pickerAvatarText}>
+                        {uploadingImage ? 'Caricamento...' : 'Foto Profilo'}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.logoutButton}
-              onPress={() => {
-                logout();
-                showDialog('Sessione Terminata', 'Hai eseguito il logout');
-              }}
-            >
-              <Ionicons name="log-out-outline" size={20} color="#fff" />
-              <Text style={styles.logoutButtonText}>Disconnetti</Text>
-            </TouchableOpacity>
+                <View style={styles.nameRow}>
+                  <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+                    <Ionicons name="person-outline" size={18} color={theme.colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputWithIcon}
+                      placeholder="Nome"
+                      placeholderTextColor={theme.colors.textMuted}
+                      value={nome}
+                      onChangeText={setNome}
+                    />
+                  </View>
+                  <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
+                    <TextInput
+                      style={styles.inputWithoutIcon}
+                      placeholder="Cognome"
+                      placeholderTextColor={theme.colors.textMuted}
+                      value={cognome}
+                      onChangeText={setCognome}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Ionicons name="mail-outline" size={18} color={theme.colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputWithIcon}
+                    placeholder="Email"
+                    placeholderTextColor={theme.colors.textMuted}
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                </View>
+
+                <View style={styles.editButtons}>
+                  <TouchableOpacity
+                    style={styles.cancelEditButton}
+                    onPress={closeEditMode}
+                  >
+                    <Text style={styles.cancelEditText}>Annulla</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.saveEditButton}
+                    onPress={handleUpdateProfile}
+                    disabled={loading || uploadingImage}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.saveEditText}>Salva</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              /* View Profile Actions */
+              <View style={styles.profileActions}>
+                <TouchableOpacity
+                  style={styles.editProfileButton}
+                  onPress={openEditMode}
+                >
+                  <Ionicons name="create-outline" size={20} color={theme.colors.primary} />
+                  <Text style={styles.editProfileButtonText}>Modifica Profilo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.logoutButton}
+                  onPress={() => {
+                    logout();
+                    showDialog('Sessione Terminata', 'Hai eseguito il logout');
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#fff" />
+                  <Text style={styles.logoutButtonText}>Disconnetti</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         ) : (
           /* Login & Register Card */
@@ -787,16 +897,12 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
   },
   avatarPlaceholder: {
     width: 100,
     height: 100,
     borderRadius: 50,
     backgroundColor: theme.colors.surfaceHighlight,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -804,17 +910,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 32,
     fontWeight: '800',
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: theme.colors.success,
-    borderWidth: 3,
-    borderColor: theme.colors.surface,
   },
   userName: {
     fontSize: 24,
@@ -827,33 +922,58 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 24,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.md,
-    padding: 16,
+  profileActions: {
     width: '100%',
-    justifyContent: 'space-around',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: theme.colors.surfaceBorder,
+    gap: 12,
   },
-  statBox: {
+  editProfileButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.surfaceHighlight,
+    gap: 8,
   },
-  statDivider: {
-    width: 1,
-    backgroundColor: theme.colors.surfaceBorder,
-  },
-  statLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-  },
-  statValue: {
-    color: theme.colors.text,
-    fontSize: 14,
+  editProfileButtonText: {
+    color: theme.colors.primary,
     fontWeight: '700',
+    fontSize: 15,
+  },
+  editForm: {
+    width: '100%',
+    gap: 14,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelEditButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: theme.borderRadius.full,
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHighlight,
+  },
+  cancelEditText: {
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  saveEditButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: theme.borderRadius.full,
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
+  },
+  saveEditText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
   },
   logoutButton: {
     backgroundColor: theme.colors.dangerSurface,

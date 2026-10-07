@@ -280,20 +280,7 @@ export function PlaylistsScreen() {
         <Text style={styles.playlistTitle} numberOfLines={1}>
           {item.nome}
         </Text>
-        <Text style={styles.playlistOwner} numberOfLines={1}>
-          Creata da {user.nome}
-        </Text>
       </View>
-      <TouchableOpacity
-        style={styles.actionBtn}
-        onPress={(event) => {
-          event.stopPropagation();
-          openEditModal(item);
-        }}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons name="pencil-outline" size={20} color={theme.colors.primary} />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -841,7 +828,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalCoverPicker: {
+    width: 140,
     height: 140,
+    alignSelf: 'center',
     backgroundColor: theme.colors.background,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,

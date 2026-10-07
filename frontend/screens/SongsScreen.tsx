@@ -271,6 +271,27 @@ export function SongsScreen() {
         setNome(result.title);
       }
 
+      // Se YouTube fornisce l'anno e l'utente non ne ha già inserito uno
+      if (result.year && (!anno || anno.trim() === '')) {
+        setAnno(String(result.year));
+      }
+
+      // Se YouTube fornisce l'artista e corrisponde nel database
+      if (result.artist) {
+        const artist = artists.find(a => a.nome.toLowerCase() === result.artist!.toLowerCase());
+        if (artist && !selectedArtists.includes(artist.id)) {
+          setSelectedArtists(prev => [...prev, artist.id]);
+        }
+      }
+
+      // Se YouTube fornisce l'album e corrisponde nel database
+      if (result.album) {
+        const album = albums.find(a => a.nome.toLowerCase() === result.album!.toLowerCase());
+        if (album && selectedAlbum !== album.id) {
+          setSelectedAlbum(album.id);
+        }
+      }
+
       setYoutubeUrl('');
       showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
     } catch (error: any) {
@@ -391,6 +412,13 @@ export function SongsScreen() {
       <View style={styles.header}>
         <Text style={styles.subtitle}>{songs.length} disponibili</Text>
         <TouchableOpacity
+          style={styles.shuffleButton}
+          onPress={() => startShufflePlayback(songs)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.addButton}
           onPress={openAddModal}
           activeOpacity={0.8}
@@ -415,17 +443,6 @@ export function SongsScreen() {
             <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
         )}
-      </View>
-
-      {/* Playback Controls (Shuffle only) */}
-      <View style={styles.playbackButtons}>
-        <TouchableOpacity
-          style={styles.shuffleButton}
-          onPress={() => startShufflePlayback(songs)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
-        </TouchableOpacity>
       </View>
 
       {/* Songs List */}
@@ -510,12 +527,14 @@ export function SongsScreen() {
                   ) : (
                     <>
                       <Ionicons name="download-outline" size={18} color="#fff" />
-                      <Text style={styles.ytDownloadBtnText}>Estrai Audio</Text>
+                      <Text style={styles.ytDownloadBtnText}>
+                        {editingSong ? 'Aggiorna file audio' : 'Estrai Audio'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
 
-                {urlFileAudio ? (
+                {urlFileAudio && !editingSong ? (
                   <View style={styles.successAudioBadge}>
                     <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
                     <Text style={styles.successAudioText} numberOfLines={1}>
@@ -525,51 +544,52 @@ export function SongsScreen() {
                 ) : null}
               </View>
 
-              {/* Cover Song Picker */}
+              {/* Cover Song Picker and Info */}
               <View style={styles.coverSection}>
-                <TouchableOpacity
-                  style={styles.modalCoverPicker}
-                  onPress={pickImage}
-                  disabled={uploadingImage}
-                >
-                  {urlImmagine ? (
-                    <>
-                      <Image source={{ uri: urlImmagine }} style={styles.modalCoverPreview} />
-                      <View style={styles.modalCoverOverlayBadge}>
-                        <Ionicons name="camera" size={14} color="#fff" />
-                        <Text style={styles.modalCoverOverlayBadgeText}>Cambia Foto</Text>
+                <View style={styles.coverAndInfoRow}>
+                  <TouchableOpacity
+                    style={styles.modalCoverPicker}
+                    onPress={pickImage}
+                    disabled={uploadingImage}
+                  >
+                    {urlImmagine ? (
+                      <>
+                        <Image source={{ uri: getMediaUrl(urlImmagine) }} style={styles.modalCoverPreview} />
+                        <View style={styles.modalCoverOverlayBadge}>
+                          <Ionicons name="camera" size={14} color="#fff" />
+                          <Text style={styles.modalCoverOverlayBadgeText}>Cambia</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.modalCoverPlaceholder}>
+                        <Ionicons name="image-outline" size={28} color={theme.colors.textSecondary} />
+                        <Text style={styles.modalCoverText}>
+                          {uploadingImage ? 'Caricamento...' : 'Seleziona Copertina'}
+                        </Text>
                       </View>
-                    </>
-                  ) : (
-                    <View style={styles.modalCoverPlaceholder}>
-                      <Ionicons name="image-outline" size={28} color={theme.colors.textSecondary} />
-                      <Text style={styles.modalCoverText}>
-                        {uploadingImage ? 'Caricamento...' : 'Seleziona Copertina dal Telefono'}
-                      </Text>
-                      <Text style={styles.modalCoverSubtext}>
-                        (Se scarichi da YouTube, verrà estratta in automatico se non ne imposti una)
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+
+                  <View style={styles.songInfoInputs}>
+                    <TextInput
+                      style={styles.songInfoInput}
+                      placeholder="Titolo Canzone (opzionale)"
+                      placeholderTextColor={theme.colors.textMuted}
+                      value={nome}
+                      onChangeText={setNome}
+                    />
+
+                    <TextInput
+                      style={styles.songInfoInput}
+                      placeholder="Anno di uscita (opzionale)"
+                      placeholderTextColor={theme.colors.textMuted}
+                      value={anno}
+                      onChangeText={setAnno}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
               </View>
-
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Titolo Canzone (opzionale)"
-                placeholderTextColor={theme.colors.textMuted}
-                value={nome}
-                onChangeText={setNome}
-              />
-
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Anno di uscita (opzionale)"
-                placeholderTextColor={theme.colors.textMuted}
-                value={anno}
-                onChangeText={setAnno}
-                keyboardType="numeric"
-              />
 
               {/* Select Album Trigger */}
               <View style={styles.selectorField}>
@@ -608,7 +628,7 @@ export function SongsScreen() {
               {/* Select Artists Trigger */}
               <View style={styles.selectorField}>
                 <View style={styles.selectorFieldHeader}>
-                  <Text style={styles.selectorLabel}>Artisti ({selectedArtists.length})</Text>
+                  <Text style={styles.selectorLabel}>Artista</Text>
                   <TouchableOpacity
                     style={styles.selectorOpenBtn}
                     onPress={() => {
@@ -788,7 +808,7 @@ export function SongsScreen() {
                     >
                       <View style={styles.pickerItemCoverWrapper}>
                         {album.urlImmagine ? (
-                          <Image source={{ uri: album.urlImmagine }} style={styles.pickerItemThumb} />
+                          <Image source={{ uri: getMediaUrl(album.urlImmagine) }} style={styles.pickerItemThumb} />
                         ) : (
                           <View style={styles.pickerItemPlaceholder}>
                             <Ionicons name="disc" size={18} color={theme.colors.textMuted} />
@@ -872,7 +892,7 @@ export function SongsScreen() {
                     >
                       <View style={styles.pickerItemCoverWrapper}>
                         {artist.urlImmagine ? (
-                          <Image source={{ uri: artist.urlImmagine }} style={[styles.pickerItemThumb, { borderRadius: 18 }]} />
+                          <Image source={{ uri: getMediaUrl(artist.urlImmagine) }} style={[styles.pickerItemThumb, { borderRadius: 18 }]} />
                         ) : (
                           <View style={[styles.pickerItemPlaceholder, { borderRadius: 18 }]}>
                             <Ionicons name="person" size={18} color={theme.colors.textMuted} />
@@ -955,7 +975,7 @@ export function SongsScreen() {
                     >
                       <View style={styles.pickerItemCoverWrapper}>
                         {playlist.urlImmagine ? (
-                          <Image source={{ uri: playlist.urlImmagine }} style={styles.pickerItemThumb} />
+                          <Image source={{ uri: getMediaUrl(playlist.urlImmagine) }} style={styles.pickerItemThumb} />
                         ) : (
                           <View style={styles.pickerItemPlaceholder}>
                             <Ionicons name="list" size={18} color={theme.colors.textMuted} />
@@ -1013,6 +1033,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textSecondary,
     marginTop: 2,
+  },
+  shuffleButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
   },
   addButton: {
     backgroundColor: theme.colors.primary,
@@ -1310,8 +1340,18 @@ const styles = StyleSheet.create({
   coverSection: {
     marginBottom: theme.spacing.md,
   },
+  coverAndInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  songInfoInputs: {
+    flex: 1,
+    gap: 11,
+  },
   modalCoverPicker: {
-    height: 140,
+    width: 110,
+    height: 110,
     borderRadius: 12,
     backgroundColor: theme.colors.surfaceHighlight,
     borderWidth: 1,
@@ -1321,6 +1361,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     position: 'relative',
+  },
+  songInfoInput: {
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: theme.colors.text,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
   },
   modalCoverPlaceholder: {
     alignItems: 'center',
@@ -1336,14 +1386,17 @@ const styles = StyleSheet.create({
   modalCoverOverlayBadge: {
     position: 'absolute',
     bottom: 8,
-    right: 8,
+    left: 0,
+    right: 0,
     backgroundColor: 'rgba(0,0,0,0.7)',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     borderRadius: theme.borderRadius.full,
+    marginHorizontal: 12,
   },
   modalCoverOverlayBadgeText: {
     color: '#fff',

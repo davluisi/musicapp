@@ -1,6 +1,10 @@
 package com.musicapp.controller;
 
 import com.musicapp.dto.ApiResponse;
+import com.musicapp.entity.Artista;
+import com.musicapp.entity.Album;
+import com.musicapp.repository.ArtistaRepository;
+import com.musicapp.repository.AlbumRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +36,12 @@ public class FileUploadController {
 
     @Autowired
     private software.amazon.awssdk.services.s3.presigner.S3Presigner s3Presigner;
+
+    @Autowired
+    private ArtistaRepository artistaRepository;
+
+    @Autowired
+    private AlbumRepository albumRepository;
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
@@ -74,22 +85,27 @@ public class FileUploadController {
             
             System.out.println("Output template: " + outputTemplate);
             
-            // 1. Estrai titolo video con yt-dlp --print %(title)s
+            // 1. Estrai metadati video con yt-dlp --print
             String extractedTitle = null;
+            String uploadDate = null;
+            String description = null;
             try {
-                ProcessBuilder titlePb = new ProcessBuilder(
+                ProcessBuilder metaPb = new ProcessBuilder(
                     "C:\\Users\\david\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe",
-                    "--print", "%(title)s",
+                    "--print", "%(title)s|%(upload_date)s|%(description)s",
                     request.getUrl()
                 );
-                Process titleProc = titlePb.start();
-                String titleOut = new String(titleProc.getInputStream().readAllBytes()).trim();
-                titleProc.waitFor(15, TimeUnit.SECONDS);
-                if (titleProc.exitValue() == 0 && !titleOut.isBlank()) {
-                    extractedTitle = titleOut.lines().findFirst().orElse("").trim();
+                Process metaProc = metaPb.start();
+                String metaOut = new String(metaProc.getInputStream().readAllBytes()).trim();
+                metaProc.waitFor(15, TimeUnit.SECONDS);
+                if (metaProc.exitValue() == 0 && !metaOut.isBlank()) {
+                    String[] parts = metaOut.split("\\|", 3);
+                    if (parts.length >= 1) extractedTitle = parts[0].trim();
+                    if (parts.length >= 2 && !parts[1].isBlank()) uploadDate = parts[1].trim();
+                    if (parts.length >= 3) description = parts[2].trim();
                 }
             } catch (Exception te) {
-                System.out.println("Could not extract title: " + te.getMessage());
+                System.out.println("Could not extract metadata: " + te.getMessage());
             }
 
             // 2. Scarica audio e thumbnail con fallback e user-agent
@@ -189,13 +205,52 @@ public class FileUploadController {
                     }
                 }
             }
-            
+
+            // Estrai anno dalla data di upload YouTube (formato YYYYMMDD)
+            Integer extractedYear = null;
+            if (uploadDate != null && uploadDate.length() >= 4) {
+                try {
+                    extractedYear = Integer.parseInt(uploadDate.substring(0, 4));
+                } catch (NumberFormatException e) {
+                    System.out.println("Could not parse year from upload date: " + uploadDate);
+                }
+            }
+
+            // Cerca corrispondenze nel database per artista e album
+            String matchedArtist = null;
+            String matchedAlbum = null;
+
+            if (extractedTitle != null || description != null) {
+                String searchText = (extractedTitle + " " + (description != null ? description : "")).toLowerCase();
+
+                // Cerca artista
+                List<Artista> allArtists = artistaRepository.findAll();
+                for (Artista artist : allArtists) {
+                    if (searchText.contains(artist.getNome().toLowerCase())) {
+                        matchedArtist = artist.getNome();
+                        break;
+                    }
+                }
+
+                // Cerca album
+                List<Album> allAlbums = albumRepository.findAll();
+                for (Album album : allAlbums) {
+                    if (searchText.contains(album.getNome().toLowerCase())) {
+                        matchedAlbum = album.getNome();
+                        break;
+                    }
+                }
+            }
+
             com.musicapp.dto.YouTubeResponseDTO responseDTO = com.musicapp.dto.YouTubeResponseDTO.builder()
                     .audioUrl(audioUrl)
                     .imageUrl(imageUrl)
                     .title(extractedTitle)
+                    .year(extractedYear)
+                    .artist(matchedArtist)
+                    .album(matchedAlbum)
                     .build();
-            
+
             return ResponseEntity.ok(new ApiResponse<>(responseDTO, "Traccia e copertina estratte con successo da YouTube", "success"));
         } catch (Exception e) {
             e.printStackTrace();

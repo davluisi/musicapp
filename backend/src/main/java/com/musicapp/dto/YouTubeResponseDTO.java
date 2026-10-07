@@ -13,4 +13,7 @@ public class YouTubeResponseDTO {
     private String audioUrl;
     private String imageUrl;
     private String title;
+    private Integer year;
+    private String artist;
+    private String album;
 }
