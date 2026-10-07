@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
   Image,
   RefreshControl,
@@ -20,10 +19,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { artistApi, albumApi, songApi, uploadApi, getMediaUrl, Artist, Album, Song } from '../services/api';
 import { useAudio } from '../services/AudioContext';
+import { AlbumDetailModal } from '../components/AlbumDetailModal';
+import { NowPlayingBanner } from '../components/GlobalMiniPlayer';
 import { theme } from '../services/theme';
+import { showDialog } from '../services/DialogContext';
 
 export function ArtistsScreen() {
-  const { activeSong, isPlaying, togglePlaySong, openSongDetail } = useAudio();
+  const { activeSong, playSongAndOpen, openSongOptions, songPendingEdit, libraryVersion, startShufflePlayback } = useAudio();
   const [artists, setArtists] = useState<Artist[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -37,6 +39,7 @@ export function ArtistsScreen() {
   const [selectedArtistDetails, setSelectedArtistDetails] = useState<Artist | null>(null);
   const [artistOptionsVisible, setArtistOptionsVisible] = useState(false);
   const [artistForOptions, setArtistForOptions] = useState<Artist | null>(null);
+  const [overlayAlbum, setOverlayAlbum] = useState<Album | null>(null);
 
   // Form states
   const [editingArtist, setEditingArtist] = useState<Artist | null>(null);
@@ -61,7 +64,7 @@ export function ArtistsScreen() {
 
   const handleSaveArtist = async () => {
     if (!nome.trim()) {
-      Alert.alert('Attenzione', 'Il nome dell\'artista è obbligatorio');
+      showDialog('Attenzione', 'Il nome dell\'artista è obbligatorio');
       return;
     }
 
@@ -73,21 +76,21 @@ export function ArtistsScreen() {
           urlImmagine: urlImmagine || undefined,
         });
         setArtists(prev => prev.map(a => a.id === editingArtist.id ? updated : a));
-        Alert.alert('Successo', 'Artista aggiornato con successo');
+        showDialog('Successo', 'Artista aggiornato con successo');
       } else {
         const newArtist = await artistApi.create({
           nome: nome.trim(),
           urlImmagine: urlImmagine || undefined,
         });
         setArtists(prev => [newArtist, ...prev]);
-        Alert.alert('Successo', 'Artista aggiunto con successo');
+        showDialog('Successo', 'Artista aggiunto con successo');
       }
       setModalVisible(false);
       setEditingArtist(null);
       setNome('');
       setUrlImmagine('');
     } catch (error) {
-      Alert.alert('Errore', editingArtist ? 'Impossibile modificare l\'artista' : 'Impossibile aggiungere l\'artista');
+      showDialog('Errore', editingArtist ? 'Impossibile modificare l\'artista' : 'Impossibile aggiungere l\'artista');
     } finally {
       setSubmitting(false);
     }
@@ -95,7 +98,13 @@ export function ArtistsScreen() {
 
   useEffect(() => {
     loadArtists();
-  }, []);
+  }, [libraryVersion]);
+
+  useEffect(() => {
+    if (songPendingEdit) {
+      setDetailModalVisible(false);
+    }
+  }, [songPendingEdit]);
 
   useFocusEffect(
     useCallback(() => {
@@ -156,7 +165,7 @@ export function ArtistsScreen() {
         const uploadedUrl = await uploadApi.uploadImage('artista', file);
         setUrlImmagine(uploadedUrl);
       } catch (error) {
-        Alert.alert('Errore', 'Impossibile caricare l\'immagine');
+        showDialog('Errore', 'Impossibile caricare l\'immagine');
       } finally {
         setUploading(false);
       }
@@ -164,7 +173,7 @@ export function ArtistsScreen() {
   };
 
   const confirmDeleteArtist = (artist: Artist) => {
-    Alert.alert(
+    showDialog(
       'Elimina Artista',
       `Sei sicuro di voler eliminare l'artista "${artist.nome}"?`,
       [
@@ -178,10 +187,10 @@ export function ArtistsScreen() {
               setArtists(prev => prev.filter(a => a.id !== artist.id));
               setDetailModalVisible(false);
               setArtistOptionsVisible(false);
-              Alert.alert('Successo', 'Artista eliminato con successo');
+              showDialog('Successo', 'Artista eliminato con successo');
             } catch (err) {
               console.error('Delete artist error:', err);
-              Alert.alert('Errore', 'Impossibile eliminare l\'artista');
+              showDialog('Errore', 'Impossibile eliminare l\'artista');
             }
           },
         },
@@ -205,6 +214,22 @@ export function ArtistsScreen() {
 
   const artistSingles = selectedArtistDetails
     ? songs.filter(s => !s.album && s.artisti?.some(a => a.id === selectedArtistDetails.id))
+    : [];
+
+  const artistTracks = selectedArtistDetails
+    ? Array.from(
+        new Map(
+          songs
+            .filter(song =>
+              !!song.urlFileAudio &&
+              (
+                song.artisti?.some(artist => artist.id === selectedArtistDetails.id) ||
+                artistAlbums.some(album => album.id === song.album?.id)
+              )
+            )
+            .map(song => [song.id, song])
+        ).values()
+      )
     : [];
 
   const renderArtist = ({ item }: { item: Artist }) => (
@@ -300,12 +325,13 @@ export function ArtistsScreen() {
       {/* FULL SCREEN / DETAILED ARTIST MODAL */}
       <Modal
         visible={detailModalVisible && !!selectedArtistDetails}
-        animationType="slide"
+        animationType="none"
         statusBarTranslucent={true}
         onRequestClose={() => setDetailModalVisible(false)}
       >
         {selectedArtistDetails && (
-          <SafeAreaView style={styles.detailContainer} edges={['top', 'bottom', 'left', 'right']}>
+          <View style={styles.detailContainer}>
+          <SafeAreaView style={styles.detailBody} edges={['top', 'left', 'right']}>
             {/* Header: Back and 3 Dots */}
             <View style={styles.detailHeader}>
               <TouchableOpacity
@@ -344,6 +370,14 @@ export function ArtistsScreen() {
                   </View>
                 )}
                 <Text style={styles.detailArtistName}>{selectedArtistDetails.nome}</Text>
+                <TouchableOpacity
+                  style={[styles.shuffleButton, artistTracks.length === 0 && { opacity: 0.5 }]}
+                  onPress={() => startShufflePlayback(artistTracks)}
+                  activeOpacity={0.8}
+                  disabled={artistTracks.length === 0}
+                >
+                  <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
+                </TouchableOpacity>
               </View>
 
               {/* Albums Section */}
@@ -357,7 +391,12 @@ export function ArtistsScreen() {
                   <Text style={styles.detailEmptyText}>Nessun album per questo artista</Text>
                 ) : (
                   artistAlbums.map(alb => (
-                    <View key={alb.id} style={styles.detailItemRow}>
+                    <TouchableOpacity
+                      key={alb.id}
+                      style={styles.detailItemRow}
+                      activeOpacity={0.7}
+                      onPress={() => setOverlayAlbum(alb)}
+                    >
                       {alb.urlImmagine ? (
                         <Image source={{ uri: getMediaUrl(alb.urlImmagine) }} style={styles.detailItemThumb} />
                       ) : (
@@ -373,7 +412,7 @@ export function ArtistsScreen() {
                           {alb.anno ? `Anno ${alb.anno}` : 'Album'}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
               </View>
@@ -389,12 +428,11 @@ export function ArtistsScreen() {
                   <Text style={styles.detailEmptyText}>Nessun singolo o canzone indipendente</Text>
                 ) : (
                   artistSingles.map(song => {
-                    const isThisPlaying = activeSong?.id === song.id && isPlaying;
                     return (
                       <TouchableOpacity
                         key={song.id}
                         style={styles.detailItemRow}
-                        onPress={() => togglePlaySong(song, true)}
+                        onPress={() => playSongAndOpen(song)}
                         activeOpacity={0.7}
                       >
                         {song.urlImmagine ? (
@@ -415,11 +453,15 @@ export function ArtistsScreen() {
                             {song.anno ? `${song.anno} • Singolo` : 'Singolo'}
                           </Text>
                         </View>
-                        <Ionicons
-                          name={isThisPlaying ? 'pause-circle' : 'play-circle'}
-                          size={28}
-                          color={theme.colors.primary}
-                        />
+                        <TouchableOpacity
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            openSongOptions(song);
+                          }}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} />
+                        </TouchableOpacity>
                       </TouchableOpacity>
                     );
                   })
@@ -427,13 +469,46 @@ export function ArtistsScreen() {
               </View>
             </ScrollView>
           </SafeAreaView>
+          <NowPlayingBanner />
+          </View>
         )}
       </Modal>
+
+      <AlbumDetailModal
+        album={overlayAlbum}
+        songs={songs}
+        visible={!!overlayAlbum}
+        onClose={() => setOverlayAlbum(null)}
+        onDelete={(album) => {
+          showDialog(
+            'Elimina Album',
+            `Sei sicuro di voler eliminare l'album "${album.nome}"?`,
+            [
+              { text: 'Annulla', style: 'cancel' },
+              {
+                text: 'Elimina',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await albumApi.delete(album.id);
+                    setAlbums(prev => prev.filter(item => item.id !== album.id));
+                    setOverlayAlbum(null);
+                    showDialog('Successo', 'Album eliminato con successo');
+                  } catch (err) {
+                    console.error('Delete album error:', err);
+                    showDialog('Errore', 'Impossibile eliminare l\'album');
+                  }
+                },
+              },
+            ]
+          );
+        }}
+      />
 
       {/* 3 DOTS ARTIST OPTIONS POPUP MODAL */}
       <Modal
         visible={artistOptionsVisible && !!artistForOptions}
-        animationType="fade"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setArtistOptionsVisible(false)}
@@ -493,7 +568,7 @@ export function ArtistsScreen() {
       {/* Modal Add/Edit Artist */}
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}
@@ -798,6 +873,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  detailBody: {
+    flex: 1,
+  },
   detailHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -819,7 +897,7 @@ const styles = StyleSheet.create({
   },
   detailScrollContent: {
     paddingHorizontal: theme.spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   detailHeroSection: {
     alignItems: 'center',
@@ -832,8 +910,6 @@ const styles = StyleSheet.create({
     height: 170,
     borderRadius: 85,
     marginBottom: 16,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
@@ -856,6 +932,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: theme.colors.text,
     textAlign: 'center',
+  },
+  shuffleButton: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
   },
   detailSection: {
     marginTop: 20,

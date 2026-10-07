@@ -4,6 +4,7 @@ import { View, Platform, StyleSheet, LogBox } from 'react-native';
 LogBox.ignoreLogs(['Response.blob()']);
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { navigationRef } from './services/navigation';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { ProfileScreen } from './screens/ProfileScreen';
@@ -13,6 +14,7 @@ import { SongsScreen } from './screens/SongsScreen';
 import { PlaylistsScreen } from './screens/PlaylistsScreen';
 import { AuthProvider } from './services/AuthContext';
 import { AudioProvider } from './services/AudioContext';
+import { DialogProvider } from './services/DialogContext';
 import { GlobalMiniPlayer } from './components/GlobalMiniPlayer';
 import { theme } from './services/theme';
 
@@ -32,10 +34,11 @@ const navigationTheme = {
 
 export default function App() {
   return (
+    <DialogProvider>
     <AuthProvider>
       <AudioProvider>
         <View style={{ flex: 1 }}>
-          <NavigationContainer theme={navigationTheme}>
+          <NavigationContainer ref={navigationRef} theme={navigationTheme}>
             <Tab.Navigator
               initialRouteName="Songs"
               screenOptions={{
@@ -150,6 +153,7 @@ export default function App() {
         </View>
       </AudioProvider>
     </AuthProvider>
+    </DialogProvider>
   );
 }
 

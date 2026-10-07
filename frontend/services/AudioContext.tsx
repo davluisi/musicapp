@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
-import { Alert } from 'react-native';
+import { showDialog } from './DialogContext';
 import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus } from 'expo-audio';
 import { Song, getMediaUrl, songApi, playlistApi } from './api';
 
@@ -27,6 +27,16 @@ export interface AudioContextType {
   restartSong: () => void;
   nextSong: () => void;
   playQueue: (songsList: Song[], startIndex?: number) => Promise<void>;
+  startShufflePlayback: (songsList: Song[]) => Promise<void>;
+  playSongOnly: (song: Song) => Promise<void>;
+  playSongAndOpen: (song: Song) => Promise<void>;
+  enqueueSongNext: (song: Song) => void;
+  enqueueSongLast: (song: Song) => void;
+  songPendingEdit: Song | null;
+  requestEditSong: (song: Song) => void;
+  clearPendingEdit: () => void;
+  libraryVersion: number;
+  notifyLibraryChanged: () => void;
   queue: Song[];
   stopAndClearPlayer: () => void;
   formatTime: (seconds: number) => string;
@@ -45,11 +55,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [songForOptions, setSongForOptions] = useState<Song | null>(null);
   const [playlistPickerVisible, setPlaylistPickerVisible] = useState<boolean>(false);
   const [selectedPlaylists, setSelectedPlaylists] = useState<number[]>([]);
+  const [songPendingEdit, setSongPendingEdit] = useState<Song | null>(null);
+  const [libraryVersion, setLibraryVersion] = useState(0);
 
   // Queue state
   const [queue, setQueue] = useState<Song[]>([]);
   const queueRef = useRef<Song[]>([]);
   const currentIndexRef = useRef<number>(-1);
+  const shufflePoolRef = useRef<Song[]>([]);
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const listenerSubRef = useRef<{ remove: () => void } | null>(null);
@@ -109,6 +122,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     queueRef.current = [];
     currentIndexRef.current = -1;
+    shufflePoolRef.current = [];
     setQueue([]);
     setActiveSong(null);
     setIsPlaying(false);
@@ -118,7 +132,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const playSongInternal = async (song: Song, autoStart = true): Promise<void> => {
     if (!song.urlFileAudio) {
-      Alert.alert('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+      showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
       return;
     }
 
@@ -151,11 +165,21 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const sub = newPlayer.addListener('playbackStatusUpdate', (status: AudioStatus) => {
       if (status.error) {
         console.error('Audio playback error in status:', status.error);
-        Alert.alert('Errore Audio', 'Errore durante la riproduzione: ' + status.error);
+        showDialog('Errore Audio', 'Errore durante la riproduzione: ' + status.error);
         setIsPlaying(false);
         return;
       }
       if (status.didJustFinish) {
+        if (shufflePoolRef.current.length > 0) {
+          const pool = shufflePoolRef.current.filter(track => !!track.urlFileAudio);
+          const others = pool.filter(track => track.id !== song.id);
+          const choices = others.length > 0 ? others : pool;
+          const nextTrack = choices[Math.floor(Math.random() * choices.length)];
+          if (nextTrack) {
+            playSongInternal(nextTrack, true);
+            return;
+          }
+        }
         // Brano finito: avanza automaticamente al prossimo nella coda se presente
         const nextIndex = currentIndexRef.current + 1;
         if (queueRef.current.length > 0 && nextIndex < queueRef.current.length) {
@@ -189,7 +213,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const togglePlaySong = async (song: Song, autoStart = true) => {
     if (!song.urlFileAudio) {
-      Alert.alert('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+      showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
       return;
     }
 
@@ -207,7 +231,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    // Nuova traccia singola (non in una coda di album):
+    // Nuova traccia singola: esce dalla riproduzione casuale
+    shufflePoolRef.current = [];
     queueRef.current = [song];
     currentIndexRef.current = 0;
     setQueue([song]);
@@ -216,18 +241,19 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await playSongInternal(song, autoStart);
     } catch (err) {
       console.error('Error loading or playing song:', err);
-      Alert.alert('Errore Riproduzione', 'Impossibile riprodurre il file audio.');
+      showDialog('Errore Riproduzione', 'Impossibile riprodurre il file audio.');
       setIsPlaying(false);
     }
   };
 
   const playQueue = async (songsList: Song[], startIndex = 0) => {
     if (!songsList || songsList.length === 0) {
-      Alert.alert('Nessun brano', 'Questo album non contiene brani da riprodurre');
+      showDialog('Nessun brano', 'Questo album non contiene brani da riprodurre');
       return;
     }
 
     const safeIndex = Math.max(0, Math.min(songsList.length - 1, startIndex));
+    shufflePoolRef.current = [];
     queueRef.current = songsList;
     currentIndexRef.current = safeIndex;
     setQueue(songsList);
@@ -237,7 +263,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await playSongInternal(initialSong, true);
     } catch (err) {
       console.error('Error starting queue playback:', err);
-      Alert.alert('Errore Riproduzione', 'Impossibile riprodurre i brani.');
+      showDialog('Errore Riproduzione', 'Impossibile riprodurre i brani.');
     }
   };
 
@@ -281,7 +307,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const openPlaylistPickerForSong = async (song: Song, userId?: number) => {
     if (!userId) {
-      Alert.alert('Accesso Richiesto', 'Devi aver effettuato l\'accesso per gestire le playlist.');
+      showDialog('Accesso Richiesto', 'Devi aver effettuato l\'accesso per gestire le playlist.');
       return;
     }
     setSongForOptions(song);
@@ -291,7 +317,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setPlaylistPickerVisible(true);
     } catch (err) {
       console.error('Error fetching playlist ids for song', err);
-      Alert.alert('Errore', 'Impossibile caricare le playlist.');
+      showDialog('Errore', 'Impossibile caricare le playlist.');
     }
   };
 
@@ -304,10 +330,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await playlistApi.syncCanzonePlaylists(songForOptions.id, userId, selectedPlaylists);
       setPlaylistPickerVisible(false);
-      Alert.alert('Successo', 'Playlist aggiornate con successo!');
+      showDialog('Successo', 'Playlist aggiornate con successo!');
     } catch (err) {
       console.error('Error syncing playlists:', err);
-      Alert.alert('Errore', 'Impossibile aggiornare le playlist');
+      showDialog('Errore', 'Impossibile aggiornare le playlist');
     }
   };
 
@@ -349,7 +375,142 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const playSongOnly = async (song: Song) => {
+    if (!song.urlFileAudio) {
+      showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+      return;
+    }
+
+    if (activeSong?.id === song.id && playerRef.current) {
+      if (!isPlaying) {
+        playerRef.current.play();
+        setIsPlaying(true);
+      }
+      return;
+    }
+
+    const waitingWithoutPlayer = !activeSong && currentIndexRef.current < 0
+      ? [...queueRef.current]
+      : null;
+
+    await togglePlaySong(song, true);
+
+    if (waitingWithoutPlayer && waitingWithoutPlayer.length > 0) {
+      const pending = [...waitingWithoutPlayer];
+      const existing = pending.findIndex((item) => item.id === song.id);
+      if (existing >= 0) {
+        pending.splice(existing, 1);
+      }
+      const nextQueue = [song, ...pending];
+      queueRef.current = nextQueue;
+      currentIndexRef.current = 0;
+      setQueue(nextQueue);
+    }
+  };
+
+  const playSongAndOpen = async (song: Song) => {
+    if (!song.urlFileAudio) {
+      showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+      return;
+    }
+    await playSongOnly(song);
+    openSongDetail(song);
+  };
+
+  const rememberQueue = (list: Song[], index: number) => {
+    queueRef.current = list;
+    currentIndexRef.current = index;
+    setQueue(list);
+  };
+
+  const enqueueSong = (song: Song, where: 'next' | 'last') => {
+    if (!song.urlFileAudio) {
+      showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
+      return;
+    }
+
+    const title = getSongTitle(song);
+    shufflePoolRef.current = [];
+    let list = [...queueRef.current];
+    let index = currentIndexRef.current;
+
+    if (activeSong) {
+      if (index < 0 || index >= list.length || list[index]?.id !== activeSong.id) {
+        const found = list.findIndex((item) => item.id === activeSong.id);
+        if (found >= 0) {
+          index = found;
+        } else {
+          list = [activeSong, ...list];
+          index = 0;
+        }
+      }
+
+      if (where === 'last') {
+        rememberQueue([...list, song], index);
+        showDialog('In coda', `"${title}" è stato aggiunto in fondo alla coda.`);
+      } else {
+        const next = [...list];
+        next.splice(index + 1, 0, song);
+        rememberQueue(next, index);
+        showDialog('Riproduci dopo', `"${title}" sarà il prossimo brano.`);
+      }
+      return;
+    }
+
+    const next = where === 'last' ? [...list, song] : [song, ...list];
+    rememberQueue(next, -1);
+    showDialog('In coda', `"${title}" è stato aggiunto alla coda.`);
+  };
+
+  const enqueueSongNext = (song: Song) => enqueueSong(song, 'next');
+  const enqueueSongLast = (song: Song) => enqueueSong(song, 'last');
+
+  const requestEditSong = (song: Song) => {
+    setSongPendingEdit(song);
+  };
+
+  const clearPendingEdit = () => {
+    setSongPendingEdit(null);
+  };
+
+  const notifyLibraryChanged = () => {
+    setLibraryVersion((version) => version + 1);
+  };
+
+  const startShufflePlayback = async (songsList: Song[]) => {
+    const playable = songsList.filter(track => !!track.urlFileAudio);
+    if (playable.length === 0) {
+      showDialog('Nessun brano', 'Non ci sono brani da riprodurre');
+      return;
+    }
+
+    shufflePoolRef.current = playable;
+    queueRef.current = [];
+    currentIndexRef.current = -1;
+    setQueue([]);
+
+    const first = playable[Math.floor(Math.random() * playable.length)];
+    try {
+      await playSongInternal(first, true);
+    } catch (err) {
+      console.error('Error starting shuffle playback:', err);
+      shufflePoolRef.current = [];
+      showDialog('Errore Riproduzione', 'Impossibile riprodurre i brani.');
+    }
+  };
+
   const nextSong = () => {
+    if (shufflePoolRef.current.length > 0) {
+      const pool = shufflePoolRef.current.filter(track => !!track.urlFileAudio);
+      const others = activeSong ? pool.filter(track => track.id !== activeSong.id) : pool;
+      const choices = others.length > 0 ? others : pool;
+      const nextTrack = choices[Math.floor(Math.random() * choices.length)];
+      if (nextTrack) {
+        playSongInternal(nextTrack, true);
+        return;
+      }
+    }
+
     const nextIndex = currentIndexRef.current + 1;
     if (queueRef.current.length > 0 && nextIndex < queueRef.current.length) {
       currentIndexRef.current = nextIndex;
@@ -386,6 +547,16 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         restartSong,
         nextSong,
         playQueue,
+        startShufflePlayback,
+        playSongOnly,
+        playSongAndOpen,
+        enqueueSongNext,
+        enqueueSongLast,
+        songPendingEdit,
+        requestEditSong,
+        clearPendingEdit,
+        libraryVersion,
+        notifyLibraryChanged,
         queue,
         stopAndClearPlayer,
         formatTime,

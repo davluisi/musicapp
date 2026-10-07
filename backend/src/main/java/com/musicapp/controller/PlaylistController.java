@@ -1,6 +1,7 @@
 package com.musicapp.controller;
 
 import com.musicapp.dto.ApiResponse;
+import com.musicapp.dto.CanzoneDTO;
 import com.musicapp.dto.PlaylistDTO;
 import com.musicapp.service.PlaylistService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,16 @@ public class PlaylistController {
             @RequestBody List<Long> playlistIds) {
         playlistService.syncCanzonePlaylists(canzoneId, utenteId, playlistIds);
         return ResponseEntity.ok(ApiResponse.success(null, "Playlist sincronizzate con successo"));
+    }
+
+    @GetMapping("/{id}/canzoni")
+    public ResponseEntity<ApiResponse<List<CanzoneDTO>>> getCanzoniByPlaylist(@PathVariable Long id) {
+        try {
+            List<CanzoneDTO> canzoni = playlistService.getCanzoniByPlaylistId(id);
+            return ResponseEntity.ok(ApiResponse.success(canzoni, "Brani della playlist recuperati con successo"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(ApiResponse.error(e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}")

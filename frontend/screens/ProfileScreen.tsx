@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Image,
   ScrollView,
@@ -17,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { authApi, uploadApi, getMediaUrl } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { theme } from '../services/theme';
+import { showDialog } from '../services/DialogContext';
 
 export function ProfileScreen() {
   const { user, isLoggedIn, login, logout } = useAuth();
@@ -132,7 +132,7 @@ export function ProfileScreen() {
         const uploadedUrl = await uploadApi.uploadImage('profile', file);
         setProfileImageUri(uploadedUrl);
       } catch (err: any) {
-        Alert.alert('Errore Upload', 'Impossibile caricare la foto profilo: ' + (err.message || ''));
+        showDialog('Errore Upload', 'Impossibile caricare la foto profilo: ' + (err.message || ''));
       } finally {
         setUploadingImage(false);
       }
@@ -141,7 +141,7 @@ export function ProfileScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Campi Mancanti', 'Inserisci email e password per accedere');
+      showDialog('Campi Mancanti', 'Inserisci email e password per accedere');
       return;
     }
 
@@ -152,11 +152,11 @@ export function ProfileScreen() {
         password,
       });
       login(loggedUser);
-      Alert.alert('Accesso Eseguito', `Benvenuto di nuovo, ${loggedUser.nome}!`);
+      showDialog('Accesso Eseguito', `Benvenuto di nuovo, ${loggedUser.nome}!`);
       resetForm();
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Credenziali errate o server non raggiungibile';
-      Alert.alert('Errore Login', msg);
+      showDialog('Errore Login', msg);
     } finally {
       setLoading(false);
     }
@@ -164,17 +164,17 @@ export function ProfileScreen() {
 
   const handleRegister = async () => {
     if (!nome.trim() || !cognome.trim() || !email.trim() || !password) {
-      Alert.alert('Campi Mancanti', 'Compila tutti i campi obbligatori');
+      showDialog('Campi Mancanti', 'Compila tutti i campi obbligatori');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Password non sicura', 'La password deve avere almeno 6 caratteri');
+      showDialog('Password non sicura', 'La password deve avere almeno 6 caratteri');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Errore Password', 'Le password non coincidono');
+      showDialog('Errore Password', 'Le password non coincidono');
       return;
     }
 
@@ -188,11 +188,11 @@ export function ProfileScreen() {
         urlImmagineProfilo: profileImageUri || undefined,
       });
       login(newUser);
-      Alert.alert('Registrazione Riuscita', `Benvenuto su MusicApp, ${newUser.nome}!`);
+      showDialog('Registrazione Riuscita', `Benvenuto su MusicApp, ${newUser.nome}!`);
       resetForm();
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Impossibile completare la registrazione';
-      Alert.alert('Errore Registrazione', msg);
+      showDialog('Errore Registrazione', msg);
     } finally {
       setLoading(false);
     }
@@ -245,7 +245,7 @@ export function ProfileScreen() {
               style={styles.logoutButton}
               onPress={() => {
                 logout();
-                Alert.alert('Sessione Terminata', 'Hai eseguito il logout');
+                showDialog('Sessione Terminata', 'Hai eseguito il logout');
               }}
             >
               <Ionicons name="log-out-outline" size={20} color="#fff" />
@@ -410,7 +410,7 @@ export function ProfileScreen() {
               {!isRegisterMode && (
                 <TouchableOpacity
                   style={styles.forgotPasswordBtn}
-                  onPress={() => Alert.alert('Recupero Password', 'La funzionalità di recupero password sarà disponibile a breve.')}
+                  onPress={() => showDialog('Recupero Password', 'La funzionalità di recupero password sarà disponibile a breve.')}
                 >
                   <Text style={styles.forgotPasswordText}>Hai dimenticato la password?</Text>
                 </TouchableOpacity>

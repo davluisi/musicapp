@@ -1,13 +1,17 @@
 package com.musicapp.service;
 
+import com.musicapp.dto.CanzoneDTO;
 import com.musicapp.dto.PlaylistDTO;
+import com.musicapp.entity.Canzone;
 import com.musicapp.entity.Playlist;
 import com.musicapp.entity.Utente;
 import com.musicapp.repository.PlaylistRepository;
 import com.musicapp.repository.UtenteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -18,7 +22,18 @@ public class PlaylistService {
     private final PlaylistRepository playlistRepository;
     private final UtenteRepository utenteRepository;
     private final com.musicapp.repository.CanzoneRepository canzoneRepository;
+    private final CanzoneService canzoneService;
     private final S3StorageService s3StorageService;
+
+    @Transactional(readOnly = true)
+    public List<CanzoneDTO> getCanzoniByPlaylistId(Long playlistId) {
+        Playlist playlist = playlistRepository.findById(playlistId)
+                .orElseThrow(() -> new RuntimeException("Playlist non trovata"));
+        List<Canzone> canzoni = playlist.getCanzoni().stream()
+                .sorted(Comparator.comparing(Canzone::getNome, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .collect(Collectors.toList());
+        return canzoneService.toCanzoneDTOList(canzoni);
+    }
 
     public List<Long> getPlaylistIdsForCanzone(Long canzoneId, Long utenteId) {
         return playlistRepository.findPlaylistIdsByCanzoneIdAndUtenteId(canzoneId, utenteId);

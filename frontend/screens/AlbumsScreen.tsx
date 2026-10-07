@@ -7,23 +7,23 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  Alert,
   ScrollView,
   ActivityIndicator,
   Image,
   RefreshControl,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { albumApi, artistApi, songApi, uploadApi, getMediaUrl, Album, Artist, Song } from '../services/api';
 import { useAudio } from '../services/AudioContext';
+import { AlbumDetailModal } from '../components/AlbumDetailModal';
 import { theme } from '../services/theme';
+import { showDialog } from '../services/DialogContext';
 
 export function AlbumsScreen() {
-  const { activeSong, isPlaying, togglePlaySong, playQueue, handleMiniPlayerToggle, openSongDetail } = useAudio();
+  const { activeSong, songPendingEdit, libraryVersion } = useAudio();
   const [albums, setAlbums] = useState<Album[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -35,8 +35,6 @@ export function AlbumsScreen() {
   // Album Detail Modal and Options
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedAlbumDetails, setSelectedAlbumDetails] = useState<Album | null>(null);
-  const [albumOptionsVisible, setAlbumOptionsVisible] = useState(false);
-  const [albumForOptions, setAlbumForOptions] = useState<Album | null>(null);
 
   // Form states
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
@@ -67,7 +65,7 @@ export function AlbumsScreen() {
 
   const handleSaveAlbum = async () => {
     if (!nome.trim()) {
-      Alert.alert('Attenzione', 'Il titolo dell\'album è obbligatorio');
+      showDialog('Attenzione', 'Il titolo dell\'album è obbligatorio');
       return;
     }
 
@@ -83,7 +81,7 @@ export function AlbumsScreen() {
           artisti: selectedArtistObjects,
         });
         setAlbums(prev => prev.map(alb => alb.id === editingAlbum.id ? updated : alb));
-        Alert.alert('Successo', 'Album aggiornato con successo');
+        showDialog('Successo', 'Album aggiornato con successo');
       } else {
         const newAlbum = await albumApi.create({
           nome: nome.trim(),
@@ -92,7 +90,7 @@ export function AlbumsScreen() {
           artisti: selectedArtistObjects,
         });
         setAlbums(prev => [newAlbum, ...prev]);
-        Alert.alert('Successo', 'Album creato con successo');
+        showDialog('Successo', 'Album creato con successo');
       }
 
       setModalVisible(false);
@@ -102,7 +100,7 @@ export function AlbumsScreen() {
       setUrlImmagine('');
       setSelectedArtists([]);
     } catch (error) {
-      Alert.alert('Errore', editingAlbum ? 'Impossibile modificare l\'album' : 'Impossibile salvare l\'album');
+      showDialog('Errore', editingAlbum ? 'Impossibile modificare l\'album' : 'Impossibile salvare l\'album');
     } finally {
       setSubmitting(false);
     }
@@ -110,7 +108,13 @@ export function AlbumsScreen() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [libraryVersion]);
+
+  useEffect(() => {
+    if (songPendingEdit) {
+      setDetailModalVisible(false);
+    }
+  }, [songPendingEdit]);
 
   useFocusEffect(
     useCallback(() => {
@@ -171,7 +175,7 @@ export function AlbumsScreen() {
         const uploadedUrl = await uploadApi.uploadImage('album', file);
         setUrlImmagine(uploadedUrl);
       } catch (error) {
-        Alert.alert('Errore', 'Impossibile caricare la copertina');
+        showDialog('Errore', 'Impossibile caricare la copertina');
       } finally {
         setUploading(false);
       }
@@ -187,7 +191,7 @@ export function AlbumsScreen() {
   };
 
   const confirmDeleteAlbum = (album: Album) => {
-    Alert.alert(
+    showDialog(
       'Elimina Album',
       `Sei sicuro di voler eliminare l'album "${album.nome}"?`,
       [
@@ -200,11 +204,11 @@ export function AlbumsScreen() {
               await albumApi.delete(album.id);
               setAlbums(prev => prev.filter(a => a.id !== album.id));
               setDetailModalVisible(false);
-              setAlbumOptionsVisible(false);
-              Alert.alert('Successo', 'Album eliminato con successo');
+              setSelectedAlbumDetails(null);
+              showDialog('Successo', 'Album eliminato con successo');
             } catch (err) {
               console.error('Delete album error:', err);
-              Alert.alert('Errore', 'Impossibile eliminare l\'album');
+              showDialog('Errore', 'Impossibile eliminare l\'album');
             }
           },
         },
@@ -224,10 +228,6 @@ export function AlbumsScreen() {
     );
     return nameMatch || artistMatch;
   });
-
-  const albumSongs = selectedAlbumDetails
-    ? songs.filter(s => s.album?.id === selectedAlbumDetails.id)
-    : [];
 
   const renderAlbum = ({ item }: { item: Album }) => (
     <TouchableOpacity
@@ -327,221 +327,22 @@ export function AlbumsScreen() {
         />
       )}
 
-      {/* FULL SCREEN / DETAILED ALBUM MODAL */}
-      <Modal
-        visible={detailModalVisible && !!selectedAlbumDetails}
-        animationType="slide"
-        statusBarTranslucent={true}
-        onRequestClose={() => setDetailModalVisible(false)}
-      >
-        {selectedAlbumDetails && (
-          <SafeAreaView style={styles.detailContainer} edges={['top', 'bottom', 'left', 'right']}>
-            {/* Header: Back and 3 Dots */}
-            <View style={styles.detailHeader}>
-              <TouchableOpacity
-                onPress={() => setDetailModalVisible(false)}
-                style={styles.detailHeaderBtn}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
-              </TouchableOpacity>
-              <Text style={styles.detailHeaderTitle} numberOfLines={1}>
-                Album
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setAlbumForOptions(selectedAlbumDetails);
-                  setAlbumOptionsVisible(true);
-                }}
-                style={styles.detailHeaderBtn}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailScrollContent}>
-              {/* Album Hero Info */}
-              <View style={styles.detailHeroSection}>
-                {selectedAlbumDetails.urlImmagine ? (
-                  <Image
-                    source={{ uri: getMediaUrl(selectedAlbumDetails.urlImmagine) }}
-                    style={styles.detailAlbumCover}
-                  />
-                ) : (
-                  <View style={styles.detailAlbumCoverPlaceholder}>
-                    <Ionicons name="disc" size={64} color={theme.colors.textMuted} />
-                  </View>
-                )}
-                <Text style={styles.detailAlbumTitle}>{selectedAlbumDetails.nome}</Text>
-                <Text style={styles.detailAlbumArtists}>
-                  {selectedAlbumDetails.artisti && selectedAlbumDetails.artisti.length > 0
-                    ? selectedAlbumDetails.artisti.map(a => a.nome).join(', ')
-                    : 'Vari Artisti'}
-                </Text>
-                {selectedAlbumDetails.anno && (
-                  <Text style={styles.detailAlbumYear}>Anno di pubblicazione: {selectedAlbumDetails.anno}</Text>
-                )}
-              </View>
-
-              {/* Tracks Section */}
-              <View style={styles.detailTracksSection}>
-                <View style={styles.detailTracksHeaderRow}>
-                  <TouchableOpacity
-                    style={[styles.albumPlayAllButton, albumSongs.length === 0 && { opacity: 0.5 }]}
-                    onPress={() => {
-                      if (albumSongs.length === 0) return;
-                      const isCurrentAlbumPlaying = selectedAlbumDetails && activeSong?.album?.id === selectedAlbumDetails.id && isPlaying;
-                      if (isCurrentAlbumPlaying) {
-                        handleMiniPlayerToggle();
-                      } else {
-                        playQueue(albumSongs, 0);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                    disabled={albumSongs.length === 0}
-                  >
-                    <Ionicons
-                      name={
-                        selectedAlbumDetails && activeSong?.album?.id === selectedAlbumDetails.id && isPlaying
-                          ? 'pause-circle'
-                          : 'play-circle'
-                      }
-                      size={28}
-                      color={theme.colors.primary}
-                    />
-                    <Text style={styles.albumPlayAllText}>
-                      {selectedAlbumDetails && activeSong?.album?.id === selectedAlbumDetails.id && isPlaying
-                        ? 'Pausa'
-                        : 'Riproduci brani'}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={styles.detailTracksCount}>{albumSongs.length} brani</Text>
-                </View>
-
-                {albumSongs.length === 0 ? (
-                  <View style={styles.detailNoTracksBox}>
-                    <Ionicons name="musical-notes-outline" size={32} color={theme.colors.textMuted} />
-                    <Text style={styles.detailNoTracksText}>Nessuna canzone associata a questo album</Text>
-                  </View>
-                ) : (
-                  albumSongs.map((song, index) => {
-                    const isThisPlaying = activeSong?.id === song.id && isPlaying;
-                    return (
-                      <TouchableOpacity
-                        key={song.id}
-                        style={styles.detailTrackRow}
-                        onPress={() => {
-                          if (isThisPlaying) {
-                            handleMiniPlayerToggle();
-                          } else {
-                            playQueue(albumSongs, index);
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.detailTrackNumber}>{index + 1}</Text>
-                        {song.urlImmagine ? (
-                          <Image source={{ uri: getMediaUrl(song.urlImmagine) }} style={styles.detailTrackThumb} />
-                        ) : (
-                          <View style={styles.detailTrackThumbPlaceholder}>
-                            <Ionicons name="musical-note" size={16} color={theme.colors.textMuted} />
-                          </View>
-                        )}
-                        <View style={styles.detailTrackInfo}>
-                          <Text
-                            style={[styles.detailTrackTitle, activeSong?.id === song.id && { color: theme.colors.primary }]}
-                            numberOfLines={1}
-                          >
-                            {song.nome || 'Traccia ' + (index + 1)}
-                          </Text>
-                          <Text style={styles.detailTrackArtist} numberOfLines={1}>
-                            {song.artisti && song.artisti.length > 0
-                              ? song.artisti.map(a => a.nome).join(', ')
-                              : 'Artista'}
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name={isThisPlaying ? 'pause-circle' : 'play-circle'}
-                          size={28}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-              </View>
-            </ScrollView>
-          </SafeAreaView>
-        )}
-      </Modal>
-
-      {/* 3 DOTS ALBUM OPTIONS POPUP MODAL */}
-      <Modal
-        visible={albumOptionsVisible && !!albumForOptions}
-        animationType="fade"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={() => setAlbumOptionsVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.optionsOverlay}
-          activeOpacity={1}
-          onPress={() => setAlbumOptionsVisible(false)}
-        >
-          <View style={styles.optionsContent}>
-            <View style={styles.optionsHeader}>
-              <Text style={styles.optionsTitle} numberOfLines={1}>
-                {albumForOptions?.nome}
-              </Text>
-              <Text style={styles.optionsSubtitle} numberOfLines={1}>
-                {albumForOptions?.artisti && albumForOptions.artisti.length > 0
-                  ? albumForOptions.artisti.map(a => a.nome).join(', ')
-                  : 'Opzioni album'}
-              </Text>
-            </View>
-
-            {/* Option: Modifica */}
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => {
-                if (albumForOptions) {
-                  setAlbumOptionsVisible(false);
-                  openEditModal(albumForOptions);
-                }
-              }}
-            >
-              <Ionicons name="pencil-outline" size={22} color={theme.colors.text} />
-              <Text style={styles.optionRowText}>Modifica</Text>
-            </TouchableOpacity>
-
-            {/* Option: Elimina */}
-            <TouchableOpacity
-              style={[styles.optionRow, styles.optionRowDestructive]}
-              onPress={() => {
-                if (albumForOptions) {
-                  confirmDeleteAlbum(albumForOptions);
-                }
-              }}
-            >
-              <Ionicons name="trash-outline" size={22} color={theme.colors.danger} />
-              <Text style={[styles.optionRowText, styles.optionRowTextDestructive]}>Elimina</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.optionCancelBtn}
-              onPress={() => setAlbumOptionsVisible(false)}
-            >
-              <Text style={styles.optionCancelText}>Chiudi</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <AlbumDetailModal
+        album={selectedAlbumDetails}
+        songs={songs}
+        visible={detailModalVisible}
+        onClose={() => {
+          setDetailModalVisible(false);
+          setSelectedAlbumDetails(null);
+        }}
+        onEdit={(album) => openEditModal(album)}
+        onDelete={(album) => confirmDeleteAlbum(album)}
+      />
 
       {/* Modal Add/Edit Album */}
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}

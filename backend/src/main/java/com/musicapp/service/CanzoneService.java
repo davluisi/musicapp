@@ -12,6 +12,7 @@ import com.musicapp.repository.CanzoneRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -89,6 +90,12 @@ public class CanzoneService {
             }
             canzoneRepository.delete(canzone);
         });
+    }
+
+    public List<CanzoneDTO> toCanzoneDTOList(Collection<Canzone> canzoni) {
+        return canzoni.stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
     }
 
     private CanzoneDTO toDTO(Canzone canzone) {

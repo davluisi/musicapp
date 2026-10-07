@@ -165,6 +165,10 @@ export const playlistApi = {
     const response = await api.get('/playlists', { params: { utenteId } });
     return response.data.data || [];
   },
+  getCanzoni: async (playlistId: number): Promise<Song[]> => {
+    const response = await api.get(`/playlists/${playlistId}/canzoni`);
+    return response.data.data || [];
+  },
   create: async (playlist: { nome: string; urlImmagine?: string; utenteId: number }): Promise<Playlist> => {
     const response = await api.post('/playlists', playlist);
     return response.data.data;

@@ -1,24 +1,98 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   Image,
   Modal,
   Platform,
-  Alert,
+  ScrollView,
 } from 'react-native';
+import { showDialog } from '../services/DialogContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio } from '../services/AudioContext';
 import { useAuth } from '../services/AuthContext';
-import { getMediaUrl, Song, songApi } from '../services/api';
+import { getMediaUrl, Playlist, Song, playlistApi, songApi } from '../services/api';
+import { navigationRef } from '../services/navigation';
 import { theme } from '../services/theme';
 
 interface GlobalMiniPlayerProps {
   onEditSong?: (song: Song) => void;
   onSongDeleted?: (songId: number) => void;
+}
+
+export function NowPlayingBanner({ floating = true }: { floating?: boolean }) {
+  const {
+    activeSong,
+    isPlaying,
+    handleMiniPlayerToggle,
+    openSongDetail,
+    restartSong,
+    nextSong,
+    getSongTitle,
+  } = useAudio();
+
+  if (!activeSong) {
+    return null;
+  }
+
+  return (
+    <View style={[styles.miniPlayer, floating ? styles.miniPlayerFloating : styles.miniPlayerEmbedded]}>
+      <TouchableOpacity
+        style={styles.miniPlayerLeft}
+        onPress={() => openSongDetail(activeSong)}
+        activeOpacity={0.8}
+      >
+        {activeSong.urlImmagine ? (
+          <Image
+            source={{ uri: getMediaUrl(activeSong.urlImmagine) }}
+            style={styles.miniPlayerCover}
+          />
+        ) : (
+          <View style={styles.miniPlayerPlaceholder}>
+            <Ionicons name="musical-note" size={18} color={theme.colors.primary} />
+          </View>
+        )}
+        <View style={styles.miniPlayerTextContainer}>
+          <Text style={styles.miniPlayerTitle} numberOfLines={1}>
+            {getSongTitle(activeSong)}
+          </Text>
+          <Text style={styles.miniPlayerArtist} numberOfLines={1}>
+            {activeSong.artisti && activeSong.artisti.length > 0
+              ? activeSong.artisti.map(a => a.nome).join(', ')
+              : 'MusicApp Player'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.miniPlayerControls}>
+        <TouchableOpacity
+          onPress={restartSong}
+          style={styles.miniPlayerNavBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="play-skip-back" size={20} color={theme.colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleMiniPlayerToggle} style={styles.miniPlayerPlayBtn}>
+          <Ionicons
+            name={isPlaying ? 'pause' : 'play'}
+            size={22}
+            color="#000"
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={nextSong}
+          style={styles.miniPlayerNavBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="play-skip-forward" size={20} color={theme.colors.text} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
@@ -33,28 +107,57 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
     detailModalVisible,
     songOptionsMenuVisible,
     songForOptions,
-    togglePlaySong,
     handleMiniPlayerToggle,
     openSongDetail,
     closeSongDetail,
     openSongOptions,
     closeSongOptions,
     openPlaylistPickerForSong,
+    closePlaylistPicker,
+    playlistPickerVisible,
+    selectedPlaylists,
+    setSelectedPlaylists,
+    handleSavePlaylistsForSong,
     stopAndClearPlayer,
     restartSong,
     nextSong,
     formatTime,
     getSongTitle,
+    playSongOnly,
+    enqueueSongNext,
+    enqueueSongLast,
+    requestEditSong,
+    notifyLibraryChanged,
   } = useAudio();
 
-  const { user, isLoggedIn } = useAuth();
+  const { user } = useAuth();
+  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
+  const [playlistQuery, setPlaylistQuery] = useState('');
 
-  if (!activeSong) {
-    return null;
-  }
+  useEffect(() => {
+    if (!playlistPickerVisible || !user) {
+      return;
+    }
+    let cancelled = false;
+    playlistApi.getByUtente(user.id)
+      .then((data) => {
+        if (!cancelled) {
+          setUserPlaylists(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading playlists', err);
+        if (!cancelled) {
+          showDialog('Errore', 'Impossibile caricare le playlist.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playlistPickerVisible, user]);
 
   const confirmDeleteSong = (song: Song) => {
-    Alert.alert(
+    showDialog(
       'Elimina Canzone',
       `Sei sicuro di voler eliminare "${getSongTitle(song)}"? L'audio e le immagini associate verranno rimosse.`,
       [
@@ -70,13 +173,14 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
               await songApi.delete(song.id);
               closeSongDetail();
               closeSongOptions();
+              notifyLibraryChanged();
               if (onSongDeleted) {
                 onSongDeleted(song.id);
               }
-              Alert.alert('Successo', 'Canzone eliminata correttamente');
+              showDialog('Successo', 'Canzone eliminata correttamente');
             } catch (err) {
               console.error('Delete song error', err);
-              Alert.alert('Errore', 'Impossibile eliminare la canzone');
+              showDialog('Errore', 'Impossibile eliminare la canzone');
             }
           },
         },
@@ -88,64 +192,14 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
 
   return (
     <>
-      {/* Sticky Floating Bottom Mini Player above Bottom Tab Navigator */}
-      <View style={styles.miniPlayer}>
-        <TouchableOpacity
-          style={styles.miniPlayerLeft}
-          onPress={() => openSongDetail(activeSong)}
-          activeOpacity={0.8}
-        >
-          {activeSong.urlImmagine ? (
-            <Image
-              source={{ uri: getMediaUrl(activeSong.urlImmagine) }}
-              style={styles.miniPlayerCover}
-            />
-          ) : (
-            <View style={styles.miniPlayerPlaceholder}>
-              <Ionicons name="musical-note" size={18} color={theme.colors.primary} />
-            </View>
-          )}
-          <View style={styles.miniPlayerTextContainer}>
-            <Text style={styles.miniPlayerTitle} numberOfLines={1}>
-              {getSongTitle(activeSong)}
-            </Text>
-            <Text style={styles.miniPlayerArtist} numberOfLines={1}>
-              {activeSong.artisti && activeSong.artisti.length > 0
-                ? activeSong.artisti.map(a => a.nome).join(', ')
-                : 'MusicApp Player'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.miniPlayerControls}>
-          <TouchableOpacity
-            onPress={restartSong}
-            style={styles.miniPlayerNavBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="play-skip-back" size={20} color={theme.colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleMiniPlayerToggle} style={styles.miniPlayerPlayBtn}>
-            <Ionicons
-              name={isPlaying ? 'pause' : 'play'}
-              size={22}
-              color="#000"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={nextSong}
-            style={styles.miniPlayerNavBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="play-skip-forward" size={20} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {activeSong && (
+      <>
+      <NowPlayingBanner />
 
       {/* FULL SCREEN / DETAILED SONG MODAL */}
       <Modal
         visible={detailModalVisible && !!detailedSong}
-        animationType="slide"
+        animationType="none"
         statusBarTranslucent={true}
         onRequestClose={closeSongDetail}
       >
@@ -266,11 +320,13 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
           </SafeAreaView>
         )}
       </Modal>
+      </>
+      )}
 
       {/* 3 DOTS SONG OPTIONS POPUP MODAL */}
       <Modal
         visible={songOptionsMenuVisible && !!songForOptions}
-        animationType="fade"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={closeSongOptions}
@@ -292,23 +348,42 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
               </Text>
             </View>
 
-            {/* Option: Modifica */}
-            {onEditSong && (
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => {
-                  if (songForOptions) {
-                    closeSongOptions();
-                    onEditSong(songForOptions);
-                  }
-                }}
-              >
-                <Ionicons name="pencil-outline" size={22} color={theme.colors.text} />
-                <Text style={styles.optionRowText}>Modifica</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!songForOptions) return;
+                closeSongOptions();
+                playSongOnly(songForOptions);
+              }}
+            >
+              <Ionicons name="play" size={22} color={theme.colors.text} />
+              <Text style={styles.optionRowText}>Riproduci</Text>
+            </TouchableOpacity>
 
-            {/* Option: Aggiungi a una playlist */}
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!songForOptions) return;
+                closeSongOptions();
+                enqueueSongLast(songForOptions);
+              }}
+            >
+              <Ionicons name="list" size={22} color={theme.colors.text} />
+              <Text style={styles.optionRowText}>Metti in coda</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!songForOptions) return;
+                closeSongOptions();
+                enqueueSongNext(songForOptions);
+              }}
+            >
+              <Ionicons name="play-skip-forward" size={22} color={theme.colors.text} />
+              <Text style={styles.optionRowText}>Riproduci dopo</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.optionRow}
               onPress={() => {
@@ -322,7 +397,26 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
               <Text style={styles.optionRowText}>Aggiungi a una playlist</Text>
             </TouchableOpacity>
 
-            {/* Option: Elimina */}
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!songForOptions) return;
+                if (onEditSong) {
+                  closeSongOptions();
+                  onEditSong(songForOptions);
+                  return;
+                }
+                closeSongOptions();
+                requestEditSong(songForOptions);
+                if (navigationRef.isReady()) {
+                  navigationRef.navigate('Songs' as never);
+                }
+              }}
+            >
+              <Ionicons name="pencil-outline" size={22} color={theme.colors.text} />
+              <Text style={styles.optionRowText}>Modifica</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.optionRow, styles.optionRowDestructive]}
               onPress={() => {
@@ -345,16 +439,84 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={playlistPickerVisible}
+        animationType="none"
+        transparent
+        statusBarTranslucent
+        onRequestClose={closePlaylistPicker}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerCard}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Aggiungi a una playlist</Text>
+              <TouchableOpacity onPress={closePlaylistPicker}>
+                <Ionicons name="close" size={24} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerSearch}>
+              <Ionicons name="search-outline" size={16} color={theme.colors.textMuted} />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder="Cerca playlist..."
+                placeholderTextColor={theme.colors.textMuted}
+                value={playlistQuery}
+                onChangeText={setPlaylistQuery}
+              />
+            </View>
+            <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+              {userPlaylists.filter((playlist) =>
+                playlist.nome.toLowerCase().includes(playlistQuery.toLowerCase())
+              ).length === 0 ? (
+                <Text style={styles.pickerEmpty}>Nessuna playlist disponibile</Text>
+              ) : (
+                userPlaylists
+                  .filter((playlist) => playlist.nome.toLowerCase().includes(playlistQuery.toLowerCase()))
+                  .map((playlist) => {
+                    const isSelected = selectedPlaylists.includes(playlist.id);
+                    return (
+                      <TouchableOpacity
+                        key={playlist.id}
+                        style={styles.pickerRow}
+                        onPress={() => {
+                          setSelectedPlaylists((prev) =>
+                            prev.includes(playlist.id)
+                              ? prev.filter((id) => id !== playlist.id)
+                              : [...prev, playlist.id]
+                          );
+                        }}
+                      >
+                        <Text style={styles.pickerRowText} numberOfLines={1}>{playlist.nome}</Text>
+                        <Ionicons
+                          name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={isSelected ? theme.colors.primary : theme.colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.pickerSave}
+              onPress={() => {
+                if (user) {
+                  handleSavePlaylistsForSong(user.id);
+                }
+              }}
+            >
+              <Text style={styles.pickerSaveText}>Salva</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 };
 
 const styles = StyleSheet.create({
   miniPlayer: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 104 : 84,
-    left: 14,
-    right: 14,
     backgroundColor: theme.colors.surfaceHighlight,
     borderRadius: theme.borderRadius.lg,
     flexDirection: 'row',
@@ -369,6 +531,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 12,
     zIndex: 9999,
+  },
+  miniPlayerFloating: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 104 : 84,
+    left: 14,
+    right: 14,
+  },
+  miniPlayerEmbedded: {
+    marginHorizontal: 14,
+    marginBottom: 12,
   },
   miniPlayerLeft: {
     flexDirection: 'row',
@@ -601,5 +773,77 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontSize: 15,
     fontWeight: '600',
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: theme.colors.overlay,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  pickerCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+    padding: theme.spacing.lg,
+    maxHeight: '70%',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.md,
+  },
+  pickerTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  pickerSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceHighlight,
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: 12,
+    marginBottom: theme.spacing.md,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    color: theme.colors.text,
+    paddingVertical: 10,
+    marginLeft: 8,
+  },
+  pickerList: {
+    maxHeight: 280,
+  },
+  pickerEmpty: {
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  pickerRowText: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerSave: {
+    marginTop: theme.spacing.md,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.full,
+    alignItems: 'center',
+    paddingVertical: 13,
+  },
+  pickerSaveText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

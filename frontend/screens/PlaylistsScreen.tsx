@@ -7,30 +7,46 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  Alert,
   ScrollView,
   ActivityIndicator,
   Image,
   RefreshControl,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { playlistApi, uploadApi, getMediaUrl, Playlist } from '../services/api';
+import { playlistApi, uploadApi, getMediaUrl, Playlist, Song } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { useAudio } from '../services/AudioContext';
+import { NowPlayingBanner } from '../components/GlobalMiniPlayer';
 import { theme } from '../services/theme';
+import { showDialog } from '../services/DialogContext';
 
 export function PlaylistsScreen() {
   const { user, isLoggedIn } = useAuth();
-  const { activeSong } = useAudio();
+  const {
+    activeSong,
+    isPlaying,
+    playQueue,
+    handleMiniPlayerToggle,
+    playSongAndOpen,
+    openSongOptions,
+    libraryVersion,
+  } = useAudio();
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [playlistSongs, setPlaylistSongs] = useState<Song[]>([]);
+  const [songsLoading, setSongsLoading] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
 
   // Form states
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
@@ -68,6 +84,59 @@ export function PlaylistsScreen() {
       loadPlaylists();
     }, [isLoggedIn, user?.id])
   );
+
+  const loadPlaylistSongs = async (playlistId: number) => {
+    try {
+      setSongsLoading(true);
+      const songs = await playlistApi.getCanzoni(playlistId);
+      setPlaylistSongs(songs);
+    } catch (error) {
+      console.error('Error fetching playlist songs', error);
+      showDialog('Errore', 'Impossibile caricare i brani della playlist');
+    } finally {
+      setSongsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (detailModalVisible && selectedPlaylist) {
+      loadPlaylistSongs(selectedPlaylist.id);
+    }
+  }, [libraryVersion]);
+
+  const openPlaylistDetail = (playlist: Playlist) => {
+    setSelectedPlaylist(playlist);
+    setPlaylistSongs([]);
+    setDetailModalVisible(true);
+    loadPlaylistSongs(playlist.id);
+  };
+
+  const confirmDeletePlaylist = (playlist: Playlist) => {
+    showDialog(
+      'Elimina Playlist',
+      `Sei sicuro di voler eliminare la playlist "${playlist.nome}"?`,
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await playlistApi.delete(playlist.id);
+              setPlaylists(prev => prev.filter(p => p.id !== playlist.id));
+              setDetailModalVisible(false);
+              setOptionsVisible(false);
+              setSelectedPlaylist(null);
+              showDialog('Successo', 'Playlist eliminata con successo');
+            } catch (err) {
+              console.error('Delete playlist error:', err);
+              showDialog('Errore', 'Impossibile eliminare la playlist');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -117,7 +186,7 @@ export function PlaylistsScreen() {
         const uploadedUrl = await uploadApi.uploadImage('playlist', file);
         setUrlImmagine(uploadedUrl);
       } catch (error) {
-        Alert.alert('Errore', 'Impossibile caricare la copertina');
+        showDialog('Errore', 'Impossibile caricare la copertina');
       } finally {
         setUploading(false);
       }
@@ -126,12 +195,12 @@ export function PlaylistsScreen() {
 
   const handleSavePlaylist = async () => {
     if (!nome.trim()) {
-      Alert.alert('Attenzione', 'Inserisci un nome per la playlist');
+      showDialog('Attenzione', 'Inserisci un nome per la playlist');
       return;
     }
 
     if (!user) {
-      Alert.alert('Errore', 'Devi essere autenticato');
+      showDialog('Errore', 'Devi essere autenticato');
       return;
     }
 
@@ -143,7 +212,10 @@ export function PlaylistsScreen() {
           urlImmagine: urlImmagine || undefined,
         });
         setPlaylists(prev => prev.map(p => p.id === editingPlaylist.id ? updated : p));
-        Alert.alert('Successo', 'Playlist aggiornata con successo');
+        if (selectedPlaylist?.id === updated.id) {
+          setSelectedPlaylist(updated);
+        }
+        showDialog('Successo', 'Playlist aggiornata con successo');
       } else {
         const created = await playlistApi.create({
           nome: nome.trim(),
@@ -151,7 +223,7 @@ export function PlaylistsScreen() {
           utenteId: user.id,
         });
         setPlaylists(prev => [created, ...prev]);
-        Alert.alert('Successo', 'Playlist creata con successo');
+        showDialog('Successo', 'Playlist creata con successo');
       }
 
       setModalVisible(false);
@@ -159,7 +231,7 @@ export function PlaylistsScreen() {
       setNome('');
       setUrlImmagine('');
     } catch (error) {
-      Alert.alert('Errore', editingPlaylist ? 'Impossibile aggiornare la playlist' : 'Impossibile creare la playlist');
+      showDialog('Errore', editingPlaylist ? 'Impossibile aggiornare la playlist' : 'Impossibile creare la playlist');
     } finally {
       setSubmitting(false);
     }
@@ -185,8 +257,15 @@ export function PlaylistsScreen() {
     p.nome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isPlaylistQueueActive = !!selectedPlaylist && playlistSongs.some(song => song.id === activeSong?.id);
+  const isPlaylistPlaying = isPlaylistQueueActive && isPlaying;
+
   const renderPlaylist = ({ item }: { item: Playlist }) => (
-    <View style={styles.playlistCard}>
+    <TouchableOpacity
+      style={styles.playlistCard}
+      onPress={() => openPlaylistDetail(item)}
+      activeOpacity={0.8}
+    >
       <View style={styles.coverWrapper}>
         {item.urlImmagine ? (
           <Image source={{ uri: getMediaUrl(item.urlImmagine) }} style={styles.playlistCover} />
@@ -206,12 +285,15 @@ export function PlaylistsScreen() {
       </View>
       <TouchableOpacity
         style={styles.actionBtn}
-        onPress={() => openEditModal(item)}
+        onPress={(event) => {
+          event.stopPropagation();
+          openEditModal(item);
+        }}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Ionicons name="pencil-outline" size={20} color={theme.colors.primary} />
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -281,15 +363,208 @@ export function PlaylistsScreen() {
         />
       )}
 
+      {/* Pagina playlist */}
+      <Modal
+        visible={detailModalVisible && !!selectedPlaylist}
+        animationType="none"
+        statusBarTranslucent={true}
+        onRequestClose={() => setDetailModalVisible(false)}
+      >
+        {selectedPlaylist && (
+          <View style={styles.detailContainer}>
+          <SafeAreaView style={styles.detailBody} edges={['top', 'left', 'right']}>
+            <View style={styles.detailHeader}>
+              <TouchableOpacity
+                onPress={() => setDetailModalVisible(false)}
+                style={styles.detailHeaderBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.detailHeaderTitle} numberOfLines={1}>
+                Playlist
+              </Text>
+              <TouchableOpacity
+                onPress={() => setOptionsVisible(true)}
+                style={styles.detailHeaderBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailScrollContent}>
+              <View style={styles.detailHeroSection}>
+                {selectedPlaylist.urlImmagine ? (
+                  <Image
+                    source={{ uri: getMediaUrl(selectedPlaylist.urlImmagine) }}
+                    style={styles.detailCover}
+                  />
+                ) : (
+                  <View style={styles.detailCoverPlaceholder}>
+                    <Ionicons name="musical-notes" size={64} color={theme.colors.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.detailTitle}>{selectedPlaylist.nome}</Text>
+                <Text style={styles.detailOwner}>Creata da {user.nome}</Text>
+              </View>
+
+              <View style={styles.detailTracksSection}>
+                <View style={styles.detailTracksHeaderRow}>
+                  <TouchableOpacity
+                    style={[styles.playAllButton, playlistSongs.length === 0 && { opacity: 0.5 }]}
+                    onPress={() => {
+                      if (playlistSongs.length === 0) return;
+                      if (isPlaylistQueueActive) {
+                        handleMiniPlayerToggle();
+                      } else {
+                        playQueue(playlistSongs, 0);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                    disabled={playlistSongs.length === 0}
+                  >
+                    <Ionicons
+                      name={isPlaylistPlaying ? 'pause-circle' : 'play-circle'}
+                      size={28}
+                      color={theme.colors.primary}
+                    />
+                    <Text style={styles.playAllText}>
+                      {isPlaylistPlaying ? 'Pausa' : 'Riproduci brani'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.detailTracksCount}>
+                    {songsLoading ? '...' : `${playlistSongs.length} brani`}
+                  </Text>
+                </View>
+
+                {songsLoading ? (
+                  <View style={styles.detailNoTracksBox}>
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                  </View>
+                ) : playlistSongs.length === 0 ? (
+                  <View style={styles.detailNoTracksBox}>
+                    <Ionicons name="musical-notes-outline" size={32} color={theme.colors.textMuted} />
+                    <Text style={styles.detailNoTracksText}>Nessuna canzone in questa playlist</Text>
+                  </View>
+                ) : (
+                  playlistSongs.map((song, index) => (
+                    <TouchableOpacity
+                      key={song.id}
+                      style={styles.detailTrackRow}
+                      onPress={() => playSongAndOpen(song)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.detailTrackNumber}>{index + 1}</Text>
+                      {song.urlImmagine ? (
+                        <Image source={{ uri: getMediaUrl(song.urlImmagine) }} style={styles.detailTrackThumb} />
+                      ) : (
+                        <View style={styles.detailTrackThumbPlaceholder}>
+                          <Ionicons name="musical-note" size={16} color={theme.colors.textMuted} />
+                        </View>
+                      )}
+                      <View style={styles.detailTrackInfo}>
+                        <Text
+                          style={[styles.detailTrackTitle, activeSong?.id === song.id && { color: theme.colors.primary }]}
+                          numberOfLines={1}
+                        >
+                          {song.nome || 'Traccia ' + (index + 1)}
+                        </Text>
+                        <Text style={styles.detailTrackArtist} numberOfLines={1}>
+                          {song.artisti && song.artisti.length > 0
+                            ? song.artisti.map(a => a.nome).join(', ')
+                            : 'Artista'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          openSongOptions(song);
+                        }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+          <NowPlayingBanner />
+          </View>
+        )}
+      </Modal>
+
+      <Modal
+        visible={optionsVisible && !!selectedPlaylist}
+        animationType="none"
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={() => setOptionsVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.optionsOverlay}
+          activeOpacity={1}
+          onPress={() => setOptionsVisible(false)}
+        >
+          <View style={styles.optionsContent}>
+            <View style={styles.optionsHeader}>
+              <Text style={styles.optionsTitle} numberOfLines={1}>
+                {selectedPlaylist?.nome}
+              </Text>
+              <Text style={styles.optionsSubtitle} numberOfLines={1}>
+                Opzioni playlist
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (selectedPlaylist) {
+                  setOptionsVisible(false);
+                  openEditModal(selectedPlaylist);
+                }
+              }}
+            >
+              <Ionicons name="pencil-outline" size={22} color={theme.colors.text} />
+              <Text style={styles.optionRowText}>Modifica</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.optionRow, styles.optionRowDestructive]}
+              onPress={() => {
+                if (selectedPlaylist) {
+                  confirmDeletePlaylist(selectedPlaylist);
+                }
+              }}
+            >
+              <Ionicons name="trash-outline" size={22} color={theme.colors.danger} />
+              <Text style={[styles.optionRowText, styles.optionRowTextDestructive]}>Elimina</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.optionCancelBtn}
+              onPress={() => setOptionsVisible(false)}
+            >
+              <Text style={styles.optionCancelText}>Chiudi</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Modal Add/Edit Playlist */}
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -300,7 +575,11 @@ export function PlaylistsScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* Cover picker */}
               <TouchableOpacity
                 style={styles.modalCoverPicker}
@@ -350,7 +629,7 @@ export function PlaylistsScreen() {
               </View>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -514,14 +793,15 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: 56,
+    paddingHorizontal: theme.spacing.md,
   },
   modalContent: {
     backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.borderRadius.lg,
-    borderTopRightRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.lg,
-    maxHeight: '85%',
+    maxHeight: '78%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -601,5 +881,216 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 15,
     fontWeight: '700',
+  },
+  detailContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  detailBody: {
+    flex: 1,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.surfaceBorder,
+  },
+  detailHeaderBtn: {
+    padding: 6,
+  },
+  detailHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  detailScrollContent: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: 120,
+  },
+  detailHeroSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.surfaceBorder,
+  },
+  detailCover: {
+    width: 200,
+    height: 200,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  detailCoverPlaceholder: {
+    width: 200,
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surfaceHighlight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+  },
+  detailTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: theme.colors.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  detailOwner: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.primary,
+    textAlign: 'center',
+  },
+  detailTracksSection: {
+    marginTop: 20,
+  },
+  detailTracksHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  playAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    gap: 8,
+  },
+  playAllText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  detailTracksCount: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
+  },
+  detailNoTracksBox: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    gap: 8,
+  },
+  detailNoTracksText: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  detailTrackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+  },
+  detailTrackNumber: {
+    width: 26,
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+  },
+  detailTrackThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    marginRight: 10,
+  },
+  detailTrackThumbPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    backgroundColor: theme.colors.surfaceHighlight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  detailTrackInfo: {
+    flex: 1,
+  },
+  detailTrackTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  detailTrackArtist: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  optionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  optionsContent: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 25,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+  },
+  optionsHeader: {
+    paddingBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.surfaceBorder,
+  },
+  optionsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  optionsSubtitle: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 14,
+  },
+  optionRowDestructive: {
+    marginTop: 4,
+  },
+  optionRowText: {
+    fontSize: 16,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  optionRowTextDestructive: {
+    color: theme.colors.danger,
+  },
+  optionCancelBtn: {
+    marginTop: 14,
+    paddingVertical: 13,
+    backgroundColor: theme.colors.surfaceHighlight,
+    borderRadius: theme.borderRadius.full,
+    alignItems: 'center',
+  },
+  optionCancelText: {
+    color: theme.colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

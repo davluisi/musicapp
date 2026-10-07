@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  Alert,
   ScrollView,
   ActivityIndicator,
   Image,
@@ -22,6 +21,7 @@ import { songApi, artistApi, albumApi, playlistApi, uploadApi, getMediaUrl, Song
 import { useAuth } from '../services/AuthContext';
 import { useAudio } from '../services/AudioContext';
 import { theme } from '../services/theme';
+import { showDialog } from '../services/DialogContext';
 
 export function SongsScreen() {
   const { user, isLoggedIn } = useAuth();
@@ -96,7 +96,7 @@ export function SongsScreen() {
 
   const handleSaveSong = async () => {
     if (!urlFileAudio.trim()) {
-      Alert.alert('File Audio Mancante', 'Scarica prima un file audio da YouTube o inserisci l\'URL');
+      showDialog('File Audio Mancante', 'Scarica prima un file audio da YouTube o inserisci l\'URL');
       return;
     }
 
@@ -139,7 +139,7 @@ export function SongsScreen() {
         }
       }
 
-      Alert.alert('Successo', editingSong ? 'Brano modificato con successo!' : 'Brano aggiunto alla tua libreria!');
+      showDialog('Successo', editingSong ? 'Brano modificato con successo!' : 'Brano aggiunto alla tua libreria!');
 
       setModalVisible(false);
       setEditingSong(null);
@@ -151,7 +151,7 @@ export function SongsScreen() {
       setSelectedArtists([]);
       setSelectedPlaylists([]);
     } catch (error) {
-      Alert.alert('Errore', editingSong ? 'Impossibile modificare il brano' : 'Impossibile salvare il brano');
+      showDialog('Errore', editingSong ? 'Impossibile modificare il brano' : 'Impossibile salvare il brano');
     } finally {
       setSubmitting(false);
     }
@@ -160,16 +160,25 @@ export function SongsScreen() {
   const {
     activeSong,
     isPlaying,
-    togglePlaySong,
-    openSongDetail,
+    playSongAndOpen,
+    openSongOptions,
     getSongTitle,
+    songPendingEdit,
+    clearPendingEdit,
+    libraryVersion,
   } = useAudio();
 
   const activeSongId = activeSong ? activeSong.id : null;
 
   useEffect(() => {
     loadData();
-  }, [isLoggedIn, user?.id]);
+  }, [isLoggedIn, user?.id, libraryVersion]);
+
+  useEffect(() => {
+    if (!songPendingEdit) return;
+    openEditModal(songPendingEdit);
+    clearPendingEdit();
+  }, [songPendingEdit]);
 
   useFocusEffect(
     useCallback(() => {
@@ -233,7 +242,7 @@ export function SongsScreen() {
         const uploadedUrl = await uploadApi.uploadImage('canzone', file);
         setUrlImmagine(uploadedUrl);
       } catch (error) {
-        Alert.alert('Errore', 'Impossibile caricare l\'immagine');
+        showDialog('Errore', 'Impossibile caricare l\'immagine');
       } finally {
         setUploadingImage(false);
       }
@@ -242,7 +251,7 @@ export function SongsScreen() {
 
   const downloadFromYouTube = async () => {
     if (!youtubeUrl.trim()) {
-      Alert.alert('Link Mancante', 'Inserisci un link YouTube valido');
+      showDialog('Link Mancante', 'Inserisci un link YouTube valido');
       return;
     }
 
@@ -262,11 +271,11 @@ export function SongsScreen() {
       }
 
       setYoutubeUrl('');
-      Alert.alert('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
+      showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
     } catch (error: any) {
       console.error('YouTube download error details:', error?.response?.data || error?.message || error);
       const serverMsg = error?.response?.data?.message || error?.message || 'Impossibile scaricare l\'audio dal link specificato';
-      Alert.alert('Errore YouTube', serverMsg);
+      showDialog('Errore YouTube', serverMsg);
     } finally {
       setDownloadingAudio(false);
     }
@@ -292,7 +301,7 @@ export function SongsScreen() {
 
   const openPlaylistPickerForSong = async (song: Song) => {
     if (!isLoggedIn || !user) {
-      Alert.alert('Accesso Richiesto', 'Devi aver effettuato l\'accesso per gestire le playlist.');
+      showDialog('Accesso Richiesto', 'Devi aver effettuato l\'accesso per gestire le playlist.');
       return;
     }
     setEditingSong(song);
@@ -302,7 +311,7 @@ export function SongsScreen() {
       setPlaylistPickerVisible(true);
     } catch (err) {
       console.error('Error fetching playlist ids for song', err);
-      Alert.alert('Errore', 'Impossibile caricare le playlist.');
+      showDialog('Errore', 'Impossibile caricare le playlist.');
     }
   };
 
@@ -311,10 +320,10 @@ export function SongsScreen() {
     try {
       await playlistApi.syncCanzonePlaylists(editingSong.id, user.id, selectedPlaylists);
       setPlaylistPickerVisible(false);
-      Alert.alert('Successo', 'Playlist aggiornate con successo!');
+      showDialog('Successo', 'Playlist aggiornate con successo!');
     } catch (err) {
       console.error('Error syncing playlists:', err);
-      Alert.alert('Errore', 'Impossibile aggiornare le playlist');
+      showDialog('Errore', 'Impossibile aggiornare le playlist');
     }
   };
 
@@ -328,13 +337,12 @@ export function SongsScreen() {
   });
 
   const renderSong = ({ item }: { item: Song }) => {
-    const isThisPlaying = activeSongId === item.id && isPlaying;
     const isThisSelected = activeSongId === item.id;
 
     return (
       <TouchableOpacity
         style={[styles.songCard, isThisSelected && styles.songCardActive]}
-        onPress={() => openSongDetail(item)}
+        onPress={() => playSongAndOpen(item)}
         activeOpacity={0.8}
       >
         <View style={styles.songCoverContainer}>
@@ -362,20 +370,15 @@ export function SongsScreen() {
           </Text>
         </View>
 
-        {/* Play/Pause Button on the right replacing the pencil */}
         <TouchableOpacity
           style={styles.cardPlayBtn}
           onPress={(e) => {
             e.stopPropagation();
-            togglePlaySong(item, true);
+            openSongOptions(item);
           }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons
-            name={isThisPlaying ? 'pause-circle' : 'play-circle'}
-            size={34}
-            color={theme.colors.primary}
-          />
+          <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.text} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -454,7 +457,7 @@ export function SongsScreen() {
       {/* Modal Add Song */}
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setModalVisible(false)}
@@ -698,7 +701,7 @@ export function SongsScreen() {
       {/* Modal Picker Album */}
       <Modal
         visible={albumPickerVisible}
-        animationType="fade"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setAlbumPickerVisible(false)}
@@ -810,7 +813,7 @@ export function SongsScreen() {
       {/* Modal Picker Artisti */}
       <Modal
         visible={artistPickerVisible}
-        animationType="fade"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setArtistPickerVisible(false)}
@@ -893,7 +896,7 @@ export function SongsScreen() {
       {/* Modal Picker Playlist */}
       <Modal
         visible={playlistPickerVisible}
-        animationType="fade"
+        animationType="none"
         transparent={true}
         statusBarTranslucent={true}
         onRequestClose={() => setPlaylistPickerVisible(false)}
