@@ -35,6 +35,7 @@ export function PlaylistsScreen() {
     playSongAndOpen,
     openSongOptions,
     libraryVersion,
+    startShufflePlayback,
   } = useAudio();
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -411,28 +412,35 @@ export function PlaylistsScreen() {
 
               <View style={styles.detailTracksSection}>
                 <View style={styles.detailTracksHeaderRow}>
-                  <TouchableOpacity
-                    style={[styles.playAllButton, playlistSongs.length === 0 && { opacity: 0.5 }]}
-                    onPress={() => {
-                      if (playlistSongs.length === 0) return;
-                      if (isPlaylistQueueActive) {
-                        handleMiniPlayerToggle();
-                      } else {
-                        playQueue(playlistSongs, 0);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                    disabled={playlistSongs.length === 0}
-                  >
-                    <Ionicons
-                      name={isPlaylistPlaying ? 'pause-circle' : 'play-circle'}
-                      size={28}
-                      color={theme.colors.primary}
-                    />
-                    <Text style={styles.playAllText}>
-                      {isPlaylistPlaying ? 'Pausa' : 'Riproduci brani'}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.playbackButtons}>
+                    <TouchableOpacity
+                      style={[styles.playlistPlayAllButton, playlistSongs.length === 0 && { opacity: 0.5 }]}
+                      onPress={() => {
+                        if (playlistSongs.length === 0) return;
+                        if (isPlaylistQueueActive) {
+                          handleMiniPlayerToggle();
+                        } else {
+                          playQueue(playlistSongs, 0);
+                        }
+                      }}
+                      activeOpacity={0.8}
+                      disabled={playlistSongs.length === 0}
+                    >
+                      <Ionicons
+                        name={isPlaylistPlaying ? 'pause-circle' : 'play-circle'}
+                        size={32}
+                        color={theme.colors.primary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.shuffleButton, playlistSongs.length === 0 && { opacity: 0.5 }]}
+                      onPress={() => startShufflePlayback(playlistSongs)}
+                      activeOpacity={0.8}
+                      disabled={playlistSongs.length === 0}
+                    >
+                      <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
                   <Text style={styles.detailTracksCount}>
                     {songsLoading ? '...' : `${playlistSongs.length} brani`}
                   </Text>
@@ -763,6 +771,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.surfaceBorder,
   },
+  playlistPlayAllButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  shuffleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -957,21 +980,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 14,
   },
+  playbackButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   playAllButton: {
+    // Icon-only button without oval background
+    padding: 4,
+    alignItems: 'center',
+  },
+  shuffleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
     borderColor: theme.colors.primary,
-    gap: 8,
-  },
-  playAllText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.text,
   },
   detailTracksCount: {
     fontSize: 13,

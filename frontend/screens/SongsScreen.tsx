@@ -161,6 +161,7 @@ export function SongsScreen() {
     activeSong,
     isPlaying,
     playSongAndOpen,
+    startShufflePlayback,
     openSongOptions,
     getSongTitle,
     songPendingEdit,
@@ -259,7 +260,7 @@ export function SongsScreen() {
     try {
       const result = await uploadApi.downloadFromYouTube(youtubeUrl.trim());
       setUrlFileAudio(result.audioUrl);
-      
+
       // Se YouTube fornisce la copertina e l'utente non ne ha già caricata una manualmente
       if (result.imageUrl && (!urlImmagine || urlImmagine.trim() === '')) {
         setUrlImmagine(result.imageUrl);
@@ -414,6 +415,17 @@ export function SongsScreen() {
             <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Playback Controls (Shuffle only) */}
+      <View style={styles.playbackButtons}>
+        <TouchableOpacity
+          style={styles.shuffleButton}
+          onPress={() => startShufflePlayback(songs)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Songs List */}

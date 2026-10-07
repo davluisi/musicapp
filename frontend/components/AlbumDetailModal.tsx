@@ -40,6 +40,7 @@ export function AlbumDetailModal({
     handleMiniPlayerToggle,
     playSongAndOpen,
     openSongOptions,
+    startShufflePlayback,
   } = useAudio();
   const [optionsVisible, setOptionsVisible] = useState(false);
 
@@ -105,28 +106,35 @@ export function AlbumDetailModal({
 
               <View style={styles.detailTracksSection}>
                 <View style={styles.detailTracksHeaderRow}>
-                  <TouchableOpacity
-                    style={[styles.albumPlayAllButton, albumSongs.length === 0 && { opacity: 0.5 }]}
-                    onPress={() => {
-                      if (albumSongs.length === 0) return;
-                      if (isAlbumQueueActive) {
-                        handleMiniPlayerToggle();
-                      } else {
-                        playQueue(albumSongs, 0);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                    disabled={albumSongs.length === 0}
-                  >
-                    <Ionicons
-                      name={isAlbumPlaying ? 'pause-circle' : 'play-circle'}
-                      size={28}
-                      color={theme.colors.primary}
-                    />
-                    <Text style={styles.albumPlayAllText}>
-                      {isAlbumPlaying ? 'Pausa' : 'Riproduci brani'}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.playbackButtons}>
+                    <TouchableOpacity
+                      style={[styles.albumPlayAllButton, albumSongs.length === 0 && { opacity: 0.5 }]}
+                      onPress={() => {
+                        if (albumSongs.length === 0) return;
+                        if (isAlbumQueueActive) {
+                          handleMiniPlayerToggle();
+                        } else {
+                          playQueue(albumSongs, 0);
+                        }
+                      }}
+                      activeOpacity={0.8}
+                      disabled={albumSongs.length === 0}
+                    >
+                      <Ionicons
+                        name={isAlbumPlaying ? 'pause-circle' : 'play-circle'}
+                        size={32}
+                        color={theme.colors.primary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.shuffleButton, albumSongs.length === 0 && { opacity: 0.5 }]}
+                      onPress={() => startShufflePlayback(albumSongs)}
+                      activeOpacity={0.8}
+                      disabled={albumSongs.length === 0}
+                    >
+                      <Ionicons name="shuffle" size={22} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
                   <Text style={styles.detailTracksCount}>{albumSongs.length} brani</Text>
                 </View>
 
@@ -335,21 +343,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 14,
   },
+  playbackButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   albumPlayAllButton: {
+    // Larger icon-only button matching text height
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  shuffleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
     borderColor: theme.colors.primary,
-    gap: 8,
-  },
-  albumPlayAllText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.text,
   },
   detailTracksCount: {
     fontSize: 13,
