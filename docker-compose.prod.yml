@@ -33,8 +33,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     ports:
-      # Espone la porta 8080 su localhost del VPS per essere raggiunta da Nginx
-      - "127.0.0.1:8080:8080"
+      # Espone la porta 8085 su localhost del VPS per essere raggiunta da Nginx
+      - "127.0.0.1:8085:8080"
     networks:
       - musicapp-network
 
