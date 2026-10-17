@@ -115,7 +115,6 @@ public class FileUploadController {
                 if (hasCookies) {
                     metaCmdList.add("--cookies");
                     metaCmdList.add(cookiesFile.getAbsolutePath());
-                    metaCmdList.add("--no-write-cookies");
                 } else {
                     metaCmdList.add("--extractor-args");
                     metaCmdList.add("youtube:player_client=android,web");
@@ -149,7 +148,6 @@ public class FileUploadController {
             if (hasCookies) {
                 dlCmdList.add("--cookies");
                 dlCmdList.add(cookiesFile.getAbsolutePath());
-                dlCmdList.add("--no-write-cookies");
             } else {
                 dlCmdList.add("--extractor-args");
                 dlCmdList.add("youtube:player_client=android,ios,web");

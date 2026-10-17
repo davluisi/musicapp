@@ -33,7 +33,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./cookies.txt:/app/cookies.txt:ro
+      - ./cookies.txt:/app/cookies.txt
     ports:
       # Espone la porta 8085 su localhost del VPS per essere raggiunta da Nginx
       - "127.0.0.1:8085:8080"
