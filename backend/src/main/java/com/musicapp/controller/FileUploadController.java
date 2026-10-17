@@ -101,6 +101,7 @@ public class FileUploadController {
             try {
                 ProcessBuilder metaPb = new ProcessBuilder(
                     ytDlpCmd,
+                    "--extractor-args", "youtube:player_client=android,web",
                     "--print", "%(title)s|%(upload_date)s|%(description)s",
                     request.getUrl()
                 );
@@ -117,11 +118,10 @@ public class FileUploadController {
                 System.out.println("Could not extract metadata: " + te.getMessage());
             }
 
-            // 2. Scarica audio e thumbnail con fallback e user-agent
+            // 2. Scarica audio e thumbnail con client android (evita antibot sign-in su VPS)
             ProcessBuilder processBuilder = new ProcessBuilder(
                 ytDlpCmd,
-                "--js-runtimes", nodeCmd,
-                "--extractor-args", "youtube:player_client=web,default",
+                "--extractor-args", "youtube:player_client=android,ios,web",
                 "--retries", "5",
                 "--fragment-retries", "5",
                 "-f", "bestaudio/best",
