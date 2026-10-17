@@ -109,12 +109,15 @@ public class FileUploadController {
             try {
                 java.util.List<String> metaCmdList = new java.util.ArrayList<>(java.util.List.of(
                     ytDlpCmd,
-                    "--extractor-args", "youtube:player_client=android,web",
+                    "--js-runtimes", nodeCmd,
                     "--print", "%(title)s|%(upload_date)s|%(description)s"
                 ));
                 if (hasCookies) {
                     metaCmdList.add("--cookies");
                     metaCmdList.add(cookiesFile.getAbsolutePath());
+                } else {
+                    metaCmdList.add("--extractor-args");
+                    metaCmdList.add("youtube:player_client=android,web");
                 }
                 metaCmdList.add(request.getUrl());
 
@@ -132,10 +135,10 @@ public class FileUploadController {
                 System.out.println("Could not extract metadata: " + te.getMessage());
             }
 
-            // 2. Scarica audio e thumbnail con fallback e user-agent
+            // 2. Scarica audio e thumbnail
             java.util.List<String> dlCmdList = new java.util.ArrayList<>(java.util.List.of(
                 ytDlpCmd,
-                "--extractor-args", "youtube:player_client=android,ios,web",
+                "--js-runtimes", nodeCmd,
                 "--retries", "5",
                 "--fragment-retries", "5",
                 "-f", "bestaudio/best",
@@ -145,6 +148,9 @@ public class FileUploadController {
             if (hasCookies) {
                 dlCmdList.add("--cookies");
                 dlCmdList.add(cookiesFile.getAbsolutePath());
+            } else {
+                dlCmdList.add("--extractor-args");
+                dlCmdList.add("youtube:player_client=android,ios,web");
             }
             dlCmdList.add(request.getUrl());
 
