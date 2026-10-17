@@ -1,0 +1,39 @@
+name: Deploy MusicApp Backend to VPS
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/**'
+      - 'docker-compose.prod.yml'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    name: Deploy to Contabo VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            echo "🚀 Navigating to app directory..."
+            cd /opt/musicapp
+
+            echo "📥 Pulling latest changes from GitHub..."
+            git pull origin master
+
+            echo "🐳 Rebuilding and updating backend container..."
+            docker compose -f docker-compose.prod.yml up -d --build backend
+
+            echo "🧹 Cleaning unused docker dangling images..."
+            docker image prune -f
+
+            echo "✅ Deployment completed successfully!"
