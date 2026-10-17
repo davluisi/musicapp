@@ -14,6 +14,12 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
+# Installa python3, ffmpeg, nodejs e yt-dlp
+RUN apk update && \
+    apk add --no-cache python3 py3-pip ffmpeg nodejs curl && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
+
 # Creazione utente non privilegiato per sicurezza
 RUN addgroup -S musicapp && adduser -S musicapp -G musicapp
 USER musicapp

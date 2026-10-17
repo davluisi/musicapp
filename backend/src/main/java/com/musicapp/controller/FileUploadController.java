@@ -85,13 +85,22 @@ public class FileUploadController {
             
             System.out.println("Output template: " + outputTemplate);
             
+            // Rileva eseguibile yt-dlp e node in base al sistema operativo (Linux/Docker vs Windows)
+            boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+            String ytDlpCmd = isWindows 
+                ? "C:\\Users\\david\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe" 
+                : "yt-dlp";
+            String nodeCmd = isWindows 
+                ? "node:C:\\nvm4w\\nodejs\\node.exe" 
+                : "node";
+
             // 1. Estrai metadati video con yt-dlp --print
             String extractedTitle = null;
             String uploadDate = null;
             String description = null;
             try {
                 ProcessBuilder metaPb = new ProcessBuilder(
-                    "C:\\Users\\david\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe",
+                    ytDlpCmd,
                     "--print", "%(title)s|%(upload_date)s|%(description)s",
                     request.getUrl()
                 );
@@ -110,8 +119,8 @@ public class FileUploadController {
 
             // 2. Scarica audio e thumbnail con fallback e user-agent
             ProcessBuilder processBuilder = new ProcessBuilder(
-                "C:\\Users\\david\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe",
-                "--js-runtimes", "node:C:\\nvm4w\\nodejs\\node.exe",
+                ytDlpCmd,
+                "--js-runtimes", nodeCmd,
                 "--extractor-args", "youtube:player_client=web,default",
                 "--retries", "5",
                 "--fragment-retries", "5",
