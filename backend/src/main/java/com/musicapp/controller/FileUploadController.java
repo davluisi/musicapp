@@ -94,17 +94,31 @@ public class FileUploadController {
                 ? "node:C:\\nvm4w\\nodejs\\node.exe" 
                 : "node";
 
+            // Controlla presenza cookies.txt
+            java.io.File cookiesFile = new java.io.File("/app/cookies.txt");
+            if (!cookiesFile.exists()) {
+                cookiesFile = new java.io.File("cookies.txt");
+            }
+            boolean hasCookies = cookiesFile.exists() && cookiesFile.length() > 0;
+            System.out.println("Using cookies: " + hasCookies);
+
             // 1. Estrai metadati video con yt-dlp --print
             String extractedTitle = null;
             String uploadDate = null;
             String description = null;
             try {
-                ProcessBuilder metaPb = new ProcessBuilder(
+                java.util.List<String> metaCmdList = new java.util.ArrayList<>(java.util.List.of(
                     ytDlpCmd,
                     "--extractor-args", "youtube:player_client=android,web",
-                    "--print", "%(title)s|%(upload_date)s|%(description)s",
-                    request.getUrl()
-                );
+                    "--print", "%(title)s|%(upload_date)s|%(description)s"
+                ));
+                if (hasCookies) {
+                    metaCmdList.add("--cookies");
+                    metaCmdList.add(cookiesFile.getAbsolutePath());
+                }
+                metaCmdList.add(request.getUrl());
+
+                ProcessBuilder metaPb = new ProcessBuilder(metaCmdList);
                 Process metaProc = metaPb.start();
                 String metaOut = new String(metaProc.getInputStream().readAllBytes()).trim();
                 metaProc.waitFor(15, TimeUnit.SECONDS);
@@ -118,17 +132,23 @@ public class FileUploadController {
                 System.out.println("Could not extract metadata: " + te.getMessage());
             }
 
-            // 2. Scarica audio e thumbnail con client android (evita antibot sign-in su VPS)
-            ProcessBuilder processBuilder = new ProcessBuilder(
+            // 2. Scarica audio e thumbnail con fallback e user-agent
+            java.util.List<String> dlCmdList = new java.util.ArrayList<>(java.util.List.of(
                 ytDlpCmd,
                 "--extractor-args", "youtube:player_client=android,ios,web",
                 "--retries", "5",
                 "--fragment-retries", "5",
                 "-f", "bestaudio/best",
                 "--write-thumbnail",
-                "-o", outputTemplate,
-                request.getUrl()
-            );
+                "-o", outputTemplate
+            ));
+            if (hasCookies) {
+                dlCmdList.add("--cookies");
+                dlCmdList.add(cookiesFile.getAbsolutePath());
+            }
+            dlCmdList.add(request.getUrl());
+
+            ProcessBuilder processBuilder = new ProcessBuilder(dlCmdList);
             
             System.out.println("Starting yt-dlp download process...");
             Process process = processBuilder.start();
