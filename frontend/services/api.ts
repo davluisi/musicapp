@@ -9,14 +9,14 @@ export const DEFAULT_API_BASE_URL = Platform.select({
 });
 
 // Possiamo memorizzare e configurare la baseURL dinamicamente
-let currentBaseUrl = 'http://192.168.1.180:8080/api/v1';
+let currentBaseUrl = 'https://music.davideluisi.com/api/v1';
 
 export const api = axios.create({
   baseURL: currentBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 120000, // 2 minuti per permettere download e upload audio
 });
 
 export const setApiBaseUrl = (newUrl: string) => {
