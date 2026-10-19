@@ -333,8 +333,41 @@ public class FileUploadController {
     }
 
     @GetMapping("/stream")
-    public ResponseEntity<byte[]> streamFile(@RequestParam("key") String key) {
+    public ResponseEntity<byte[]> streamFile(
+            @RequestParam("key") String key,
+            @RequestHeader(value = "Range", required = false) String rangeHeader) {
         try {
+            // Se c'è un Range Header, serviamo in streaming parziale 206 per Android ExoPlayer
+            if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+                software.amazon.awssdk.services.s3.model.GetObjectRequest getObjectRequest = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(key)
+                        .range(rangeHeader)
+                        .build();
+
+                software.amazon.awssdk.core.ResponseBytes<software.amazon.awssdk.services.s3.model.GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(getObjectRequest);
+                byte[] data = objectBytes.asByteArray();
+                software.amazon.awssdk.services.s3.model.GetObjectResponse s3Response = objectBytes.response();
+
+                String contentType = s3Response.contentType();
+                if (contentType == null || contentType.isBlank()) {
+                    if (key.endsWith(".m4a")) contentType = "audio/mp4";
+                    else if (key.endsWith(".webm")) contentType = "audio/webm";
+                    else if (key.endsWith(".mp3")) contentType = "audio/mpeg";
+                    else contentType = "audio/mp4";
+                }
+
+                String contentRange = s3Response.contentRange();
+                return ResponseEntity.status(206)
+                        .header("Content-Type", contentType)
+                        .header("Content-Range", contentRange != null ? contentRange : rangeHeader + "/" + (data.length))
+                        .header("Content-Length", String.valueOf(data.length))
+                        .header("Accept-Ranges", "bytes")
+                        .header("Cache-Control", "public, max-age=86400")
+                        .body(data);
+            }
+
+            // Richiesta normale 200 OK completa
             software.amazon.awssdk.services.s3.model.GetObjectRequest getObjectRequest = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
