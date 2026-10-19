@@ -250,53 +250,146 @@ export function SongsScreen() {
     }
   };
 
+  const extractYouTubeId = (url: string): string | null => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|shorts\/)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return match && match[2].length === 11 ? match[2] : null;
+  };
+
   const downloadFromYouTube = async () => {
-    if (!youtubeUrl.trim()) {
+    const cleanUrl = youtubeUrl.trim();
+    if (!cleanUrl) {
       showDialog('Link Mancante', 'Inserisci un link YouTube valido');
       return;
     }
 
+    const videoId = extractYouTubeId(cleanUrl);
+    if (!videoId) {
+      showDialog('Link Non Valido', 'Inserisci un URL YouTube corretto (es. https://youtu.be/... o https://www.youtube.com/watch?v=...)');
+      return;
+    }
+
     setDownloadingAudio(true);
+    let tempLocalAudioPath: string | null = null;
+
     try {
-      const result = await uploadApi.downloadFromYouTube(youtubeUrl.trim());
-      setUrlFileAudio(result.audioUrl);
+      // 1. Estrai metadati (titolo, autore e copertina) tramite endpoint ufficiale oEmbed di YouTube
+      let extractedTitle: string | null = null;
+      let extractedAuthor: string | null = null;
+      let thumbnailUrl: string | null = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-      // Se YouTube fornisce la copertina e l'utente non ne ha già caricata una manualmente
-      if (result.imageUrl && (!urlImmagine || urlImmagine.trim() === '')) {
-        setUrlImmagine(result.imageUrl);
+      try {
+        const oembedRes = await axios.get(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { timeout: 8000 });
+        if (oembedRes.data) {
+          extractedTitle = oembedRes.data.title || null;
+          extractedAuthor = oembedRes.data.author_name || null;
+          if (oembedRes.data.thumbnail_url) {
+            thumbnailUrl = oembedRes.data.thumbnail_url;
+          }
+        }
+      } catch (e) {
+        console.log('oEmbed metadata fallback', e);
       }
 
-      // Se YouTube fornisce il titolo e l'utente non ne ha già inserito uno
-      if (result.title && (!nome || nome.trim() === '')) {
-        setNome(result.title);
+      // Imposta titolo se non inserito
+      if (extractedTitle && (!nome || nome.trim() === '')) {
+        setNome(extractedTitle);
       }
 
-      // Se YouTube fornisce l'anno e l'utente non ne ha già inserito uno
-      if (result.year && (!anno || anno.trim() === '')) {
-        setAnno(String(result.year));
-      }
-
-      // Se YouTube fornisce l'artista e corrisponde nel database
-      if (result.artist) {
-        const artist = artists.find(a => a.nome.toLowerCase() === result.artist!.toLowerCase());
-        if (artist && !selectedArtists.includes(artist.id)) {
-          setSelectedArtists(prev => [...prev, artist.id]);
+      // Imposta o crea copertina su S3
+      if (thumbnailUrl && (!urlImmagine || urlImmagine.trim() === '')) {
+        try {
+          const tempThumbUri = `${FileSystem.cacheDirectory}thumb_${videoId}.jpg`;
+          const thumbDownload = await FileSystem.downloadAsync(thumbnailUrl, tempThumbUri);
+          const thumbFile: any = {
+            uri: thumbDownload.uri,
+            name: `thumb_${videoId}.jpg`,
+            type: 'image/jpeg',
+          };
+          const uploadedThumbUrl = await uploadApi.uploadImage('canzone', thumbFile);
+          setUrlImmagine(uploadedThumbUrl);
+          await FileSystem.deleteAsync(tempThumbUri, { idempotent: true });
+        } catch (imgErr) {
+          console.log('Thumbnail upload fallback to direct URL', imgErr);
+          setUrlImmagine(thumbnailUrl);
         }
       }
 
-      // Se YouTube fornisce l'album e corrisponde nel database
-      if (result.album) {
-        const album = albums.find(a => a.nome.toLowerCase() === result.album!.toLowerCase());
-        if (album && selectedAlbum !== album.id) {
-          setSelectedAlbum(album.id);
+      // Prova corrispondenza artista
+      const matchSearch = `${extractedTitle || ''} ${extractedAuthor || ''}`.toLowerCase();
+      const matchedArtist = artists.find(a => matchSearch.includes(a.nome.toLowerCase()));
+      if (matchedArtist && !selectedArtists.includes(matchedArtist.id)) {
+        setSelectedArtists(prev => [...prev, matchedArtist.id]);
+      }
+
+      // Prova corrispondenza album
+      const matchedAlbum = albums.find(a => matchSearch.includes(a.nome.toLowerCase()));
+      if (matchedAlbum && selectedAlbum !== matchedAlbum.id) {
+        setSelectedAlbum(matchedAlbum.id);
+      }
+
+      // 2. Scarica il flusso audio MP3/M4A dal servizio di conversione diretto
+      const audioSources = [
+        `https://api.cobalt.directory/tunnel?url=https://www.youtube.com/watch?v=${videoId}`,
+        `https://invidious.nerdvpn.de/latest_version?id=${videoId}&itag=140`,
+        `https://invidious.drgns.space/latest_version?id=${videoId}&itag=140`,
+        `https://inv.tux.pizza/latest_version?id=${videoId}&itag=140`,
+      ];
+
+      tempLocalAudioPath = `${FileSystem.cacheDirectory}${videoId}.m4a`;
+      let downloaded = false;
+
+      for (const streamUrl of audioSources) {
+        try {
+          const downloadRes = await FileSystem.downloadAsync(streamUrl, tempLocalAudioPath, {
+            headers: {
+              'Accept': '*/*',
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile)',
+            },
+          });
+          if (downloadRes.status === 200) {
+            const fileInfo = await FileSystem.getInfoAsync(tempLocalAudioPath);
+            if (fileInfo.exists && (fileInfo as any).size > 100000) { // almeno 100KB per essere un audio valido
+              downloaded = true;
+              break;
+            }
+          }
+        } catch (sourceErr) {
+          console.log(`Failed stream source ${streamUrl}, trying next...`);
         }
       }
+
+      // Se le sorgenti dirette hanno fallito, tenta il fallback con il backend
+      if (!downloaded) {
+        const beResult = await uploadApi.downloadFromYouTube(cleanUrl);
+        setUrlFileAudio(beResult.audioUrl);
+        setYoutubeUrl('');
+        showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
+        return;
+      }
+
+      // 3. Carica il file audio scaricato nel backend -> AWS S3
+      const audioUploadFile: any = {
+        uri: tempLocalAudioPath,
+        name: `${videoId}.m4a`,
+        type: 'audio/mp4',
+      };
+
+      const uploadedAudioUrl = await uploadApi.uploadAudio(audioUploadFile);
+      setUrlFileAudio(uploadedAudioUrl);
+
+      // Cancella il file temporaneo dalla memoria del telefono
+      await FileSystem.deleteAsync(tempLocalAudioPath, { idempotent: true });
+      tempLocalAudioPath = null;
 
       setYoutubeUrl('');
-      showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
+      showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube e salvati su AWS S3!');
     } catch (error: any) {
+      if (tempLocalAudioPath) {
+        try { await FileSystem.deleteAsync(tempLocalAudioPath, { idempotent: true }); } catch (_) {}
+      }
       console.error('YouTube download error details:', error?.response?.data || error?.message || error);
-      const serverMsg = error?.response?.data?.message || error?.message || 'Impossibile scaricare l\'audio dal link specificato';
+      const serverMsg = error?.response?.data?.message || error?.message || 'Impossibile estrarre l\'audio dal video YouTube';
       showDialog('Errore YouTube', serverMsg);
     } finally {
       setDownloadingAudio(false);

@@ -74,6 +74,36 @@ public class FileUploadController {
         }
     }
 
+    @PostMapping("/audio")
+    public ResponseEntity<ApiResponse<String>> uploadAudio(@RequestParam("file") MultipartFile file) {
+        try {
+            String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "audio.m4a";
+            String s3Key = "canzoni/audio/" + UUID.randomUUID() + "-" + originalFilename;
+            
+            String contentType = file.getContentType();
+            if (contentType == null || contentType.isBlank() || contentType.equals("application/octet-stream")) {
+                if (originalFilename.endsWith(".m4a")) contentType = "audio/mp4";
+                else if (originalFilename.endsWith(".webm")) contentType = "audio/webm";
+                else if (originalFilename.endsWith(".mp3")) contentType = "audio/mpeg";
+                else contentType = "audio/mp4";
+            }
+
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(s3Key)
+                    .contentType(contentType)
+                    .build();
+
+            s3Client.putObject(putObjectRequest, software.amazon.awssdk.core.sync.RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+
+            String fileUrl = "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + s3Key;
+            return ResponseEntity.ok(new ApiResponse<>(fileUrl, "Audio caricato con successo", "success"));
+        } catch (IOException e) {
+            return ResponseEntity.status(500)
+                    .body(new ApiResponse<>(null, "Errore durante il caricamento dell'audio: " + e.getMessage(), "error"));
+        }
+    }
+
     @PostMapping("/youtube")
     public ResponseEntity<ApiResponse<com.musicapp.dto.YouTubeResponseDTO>> downloadFromYouTube(@RequestBody YouTubeRequest request) {
         System.out.println("YouTube download request received: " + request.getUrl());

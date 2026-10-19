@@ -216,6 +216,19 @@ export const uploadApi = {
     return response.data.data;
   },
 
+  uploadAudio: async (file: any): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await api.post('/upload/audio', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      transformRequest: (data) => data,
+    });
+    return response.data.data;
+  },
+
   downloadFromYouTube: async (url: string): Promise<YouTubeExtractResult> => {
     const response = await api.post('/upload/youtube', { url });
     return response.data.data;
