@@ -330,12 +330,13 @@ export function SongsScreen() {
         setSelectedAlbum(matchedAlbum.id);
       }
 
-      // 2. Scarica il flusso audio MP3/M4A dal servizio di conversione diretto
+      // 2. Scarica il flusso audio MP3/M4A con proxy garantito (local=true)
       const audioSources = [
-        `https://api.cobalt.directory/tunnel?url=https://www.youtube.com/watch?v=${videoId}`,
-        `https://invidious.nerdvpn.de/latest_version?id=${videoId}&itag=140`,
-        `https://invidious.drgns.space/latest_version?id=${videoId}&itag=140`,
-        `https://inv.tux.pizza/latest_version?id=${videoId}&itag=140`,
+        `https://yewtu.be/latest_version?id=${videoId}&itag=140&local=true`,
+        `https://inv.nadeko.net/latest_version?id=${videoId}&itag=140&local=true`,
+        `https://invidious.nerdvpn.de/latest_version?id=${videoId}&itag=140&local=true`,
+        `https://invidious.drgns.space/latest_version?id=${videoId}&itag=140&local=true`,
+        `https://inv.tux.pizza/latest_version?id=${videoId}&itag=140&local=true`,
       ];
 
       tempLocalAudioPath = `${FileSystem.cacheDirectory}${videoId}.m4a`;
@@ -346,12 +347,12 @@ export function SongsScreen() {
           const downloadRes = await FileSystem.downloadAsync(streamUrl, tempLocalAudioPath, {
             headers: {
               'Accept': '*/*',
-              'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile)',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             },
           });
           if (downloadRes.status === 200) {
             const fileInfo = await FileSystem.getInfoAsync(tempLocalAudioPath);
-            if (fileInfo.exists && (fileInfo as any).size > 100000) { // almeno 100KB per essere un audio valido
+            if (fileInfo.exists && (fileInfo as any).size > 50000) { // almeno 50KB per essere un audio valido
               downloaded = true;
               break;
             }
@@ -361,13 +362,8 @@ export function SongsScreen() {
         }
       }
 
-      // Se le sorgenti dirette hanno fallito, tenta il fallback con il backend
       if (!downloaded) {
-        const beResult = await uploadApi.downloadFromYouTube(cleanUrl);
-        setUrlFileAudio(beResult.audioUrl);
-        setYoutubeUrl('');
-        showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube!');
-        return;
+        throw new Error('Tutti i server di streaming sono momentaneamente occupati per questo video. Riprova tra poco.');
       }
 
       // 3. Carica il file audio scaricato nel backend -> AWS S3
