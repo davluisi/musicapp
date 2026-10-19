@@ -17,6 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import axios from 'axios';
 import { songApi, artistApi, albumApi, playlistApi, uploadApi, getMediaUrl, Song, Artist, Album, Playlist } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { useAudio } from '../services/AudioContext';

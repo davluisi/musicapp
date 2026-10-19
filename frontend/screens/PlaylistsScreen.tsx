@@ -763,16 +763,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     alignItems: 'center',
   },
-  shuffleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
