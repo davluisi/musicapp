@@ -14,11 +14,12 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Installa python3, ffmpeg, nodejs e yt-dlp
+# Installa python3, ffmpeg, nodejs, yt-dlp e plugin PO Token provider
 RUN apk update && \
     apk add --no-cache python3 py3-pip ffmpeg nodejs curl && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    python3 -m pip install --no-cache-dir --break-system-packages bgutil-ytdlp-pot-provider
 
 # Creazione utente non privilegiato per sicurezza
 RUN addgroup -S musicapp && adduser -S musicapp -G musicapp

@@ -31,7 +31,7 @@ jobs:
             git pull origin master
 
             echo "🐳 Rebuilding and updating backend container..."
-            docker compose -f docker-compose.prod.yml up -d --build backend
+            docker compose -f docker-compose.prod.yml up -d --build
 
             echo "🧹 Cleaning unused docker dangling images..."
             docker image prune -f

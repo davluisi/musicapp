@@ -115,9 +115,13 @@ public class FileUploadController {
                 if (hasCookies) {
                     metaCmdList.add("--cookies");
                     metaCmdList.add(cookiesFile.getAbsolutePath());
+                }
+                if (!isWindows) {
+                    metaCmdList.add("--extractor-args");
+                    metaCmdList.add("youtubepot-bgutilhttp:base_url=http://bgutil-provider:4416");
                 } else {
                     metaCmdList.add("--extractor-args");
-                    metaCmdList.add("youtube:player_client=android,web");
+                    metaCmdList.add("youtube:player_client=web,default");
                 }
                 metaCmdList.add(request.getUrl());
 
@@ -148,9 +152,13 @@ public class FileUploadController {
             if (hasCookies) {
                 dlCmdList.add("--cookies");
                 dlCmdList.add(cookiesFile.getAbsolutePath());
+            }
+            if (!isWindows) {
+                dlCmdList.add("--extractor-args");
+                dlCmdList.add("youtubepot-bgutilhttp:base_url=http://bgutil-provider:4416");
             } else {
                 dlCmdList.add("--extractor-args");
-                dlCmdList.add("youtube:player_client=android,ios,web");
+                dlCmdList.add("youtube:player_client=web,default");
             }
             dlCmdList.add(request.getUrl());
 

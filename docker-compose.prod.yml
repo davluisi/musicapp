@@ -17,6 +17,14 @@ services:
     networks:
       - musicapp-network
 
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: musicapp-pot-provider
+    restart: unless-stopped
+    init: true
+    networks:
+      - musicapp-network
+
   backend:
     build:
       context: ./backend
@@ -26,6 +34,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      bgutil-provider:
+        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-musicapp}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
