@@ -298,6 +298,59 @@ export function SongsScreen() {
         setNome(extractedTitle);
       }
 
+      // 1.1 Ricerca metadati musicali (Anno, Album, Artista)
+      let identifiedAlbumName: string | null = null;
+      let identifiedYear: string | null = null;
+      let identifiedArtistName: string | null = null;
+
+      // Prova a recuperare la data reale di pubblicazione del video direttamente da YouTube
+      try {
+        const ytWatchRes = await axios.get(`https://www.youtube.com/watch?v=${videoId}`, {
+          timeout: 5000,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        });
+        const html = ytWatchRes.data || '';
+        const dateMatch = html.match(/"publishDate":"(\d{4})/) || html.match(/"uploadDate":"(\d{4})/);
+        if (dateMatch && dateMatch[1]) {
+          identifiedYear = dateMatch[1];
+        }
+      } catch (ytDateErr) {
+        console.log('YouTube watch page date fallback:', ytDateErr);
+      }
+
+      // Ricerca metadati musicali di rifinitura da iTunes (per album e artista)
+      try {
+        const queryTerm = `${extractedTitle || ''} ${extractedAuthor || ''}`
+          .replace(/[\[\(].*?(official|video|audio|remastered|lyrics|hd|4k|clip).*?[\]\)]/gi, '')
+          .trim();
+
+        if (queryTerm) {
+          const itunesRes = await axios.get(`https://itunes.apple.com/search?term=${encodeURIComponent(queryTerm)}&entity=song&limit=1`, { timeout: 5000 });
+          if (itunesRes.data?.results && itunesRes.data.results.length > 0) {
+            const trackInfo = itunesRes.data.results[0];
+            if (trackInfo.collectionName) {
+              identifiedAlbumName = trackInfo.collectionName;
+            }
+            if (trackInfo.artistName) {
+              identifiedArtistName = trackInfo.artistName;
+            }
+            if (!identifiedYear && trackInfo.releaseDate) {
+              identifiedYear = trackInfo.releaseDate.substring(0, 4);
+            }
+            if (trackInfo.trackName && (!nome || nome.trim() === '')) {
+              setNome(trackInfo.trackName);
+            }
+          }
+        }
+      } catch (musicErr) {
+        console.log('Music metadata search fallback:', musicErr);
+      }
+
+      // Imposta anno se trovato
+      if (identifiedYear && (!anno || anno.trim() === '')) {
+        setAnno(identifiedYear);
+      }
+
       // Imposta o crea copertina su S3
       if (thumbnailUrl && (!urlImmagine || urlImmagine.trim() === '')) {
         try {
@@ -317,63 +370,89 @@ export function SongsScreen() {
         }
       }
 
-      // Prova corrispondenza artista
-      const matchSearch = `${extractedTitle || ''} ${extractedAuthor || ''}`.toLowerCase();
-      const matchedArtist = artists.find(a => matchSearch.includes(a.nome.toLowerCase()));
-      if (matchedArtist && !selectedArtists.includes(matchedArtist.id)) {
-        setSelectedArtists(prev => [...prev, matchedArtist.id]);
+      // Cerca corrispondenza Artista solo tra quelli già presenti nel database (senza creare nuovi artisti)
+      const targetArtist = (identifiedArtistName || extractedAuthor || '').toLowerCase().trim();
+      const combinedSearch = `${extractedTitle || ''} ${extractedAuthor || ''}`.toLowerCase();
+      if (targetArtist || combinedSearch) {
+        const matchedArtist = artists.find(a => {
+          const aNome = a.nome.toLowerCase().trim();
+          return aNome === targetArtist || 
+                 (targetArtist && (targetArtist.includes(aNome) || aNome.includes(targetArtist))) ||
+                 combinedSearch.includes(aNome);
+        });
+
+        if (matchedArtist && !selectedArtists.includes(matchedArtist.id)) {
+          setSelectedArtists(prev => [...prev, matchedArtist.id]);
+        }
       }
 
-      // Prova corrispondenza album
-      const matchedAlbum = albums.find(a => matchSearch.includes(a.nome.toLowerCase()));
-      if (matchedAlbum && selectedAlbum !== matchedAlbum.id) {
-        setSelectedAlbum(matchedAlbum.id);
+      // Cerca corrispondenza Album solo tra quelli già presenti nel database (senza creare nuovi album)
+      const targetAlbum = (identifiedAlbumName || '').toLowerCase().trim();
+      if (targetAlbum || combinedSearch) {
+        const matchedAlbum = albums.find(a => {
+          const aNome = a.nome.toLowerCase().trim();
+          return (targetAlbum && (aNome === targetAlbum || targetAlbum.includes(aNome) || aNome.includes(targetAlbum))) ||
+                 combinedSearch.includes(aNome);
+        });
+
+        if (matchedAlbum && selectedAlbum !== matchedAlbum.id) {
+          setSelectedAlbum(matchedAlbum.id);
+        }
       }
 
-      // 2. Scarica il flusso audio MP3/M4A con proxy garantito (local=true)
-      const audioSources = [
-        `https://yewtu.be/latest_version?id=${videoId}&itag=140&local=true`,
-        `https://inv.nadeko.net/latest_version?id=${videoId}&itag=140&local=true`,
-        `https://invidious.nerdvpn.de/latest_version?id=${videoId}&itag=140&local=true`,
-        `https://invidious.drgns.space/latest_version?id=${videoId}&itag=140&local=true`,
-        `https://inv.tux.pizza/latest_version?id=${videoId}&itag=140&local=true`,
-      ];
-
-      tempLocalAudioPath = `${FileSystem.cacheDirectory}${videoId}.m4a`;
+      // 2. Risolvi l'URL MP3 diretto tramite RapidAPI (garantito e veloce)
+      tempLocalAudioPath = `${FileSystem.cacheDirectory}${videoId}.mp3`;
       let downloaded = false;
 
-      for (const streamUrl of audioSources) {
-        try {
-          const downloadRes = await FileSystem.downloadAsync(streamUrl, tempLocalAudioPath, {
+      try {
+        console.log(`🔍 Richiesta stream audio a RapidAPI per video ${videoId}...`);
+        const rapidRes = await axios.get(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+          timeout: 25000,
+          headers: {
+            'x-rapidapi-key': '95c715406dmshc5cec49ca145609p1a3947jsn60d664758a62',
+            'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com',
+          },
+        });
+
+        const downloadLink = rapidRes.data?.link;
+        if (downloadLink) {
+          console.log(`🎵 Trovato link audio diretto! Inizio download MP3 sul telefono...`);
+          const downloadRes = await FileSystem.downloadAsync(downloadLink, tempLocalAudioPath, {
             headers: {
               'Accept': '*/*',
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             },
           });
+
           if (downloadRes.status === 200) {
             const fileInfo = await FileSystem.getInfoAsync(tempLocalAudioPath);
-            if (fileInfo.exists && (fileInfo as any).size > 50000) { // almeno 50KB per essere un audio valido
+            const fileSize = (fileInfo as any).size || 0;
+            console.log(`📥 Download completato, dimensione file: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`);
+            if (fileInfo.exists && fileSize > 300000) {
               downloaded = true;
-              break;
             }
           }
-        } catch (sourceErr) {
-          console.log(`Failed stream source ${streamUrl}, trying next...`);
+        } else {
+          console.warn('RapidAPI response does not contain direct link:', rapidRes.data);
         }
+      } catch (rapidErr: any) {
+        console.error('❌ Errore RapidAPI:', rapidErr?.response?.data || rapidErr?.message || rapidErr);
       }
 
       if (!downloaded) {
-        throw new Error('Tutti i server di streaming sono momentaneamente occupati per questo video. Riprova tra poco.');
+        throw new Error('Impossibile ottenere la traccia audio da YouTube. Riprova tra poco.');
       }
 
       // 3. Carica il file audio scaricato nel backend -> AWS S3
+      console.log('🚀 Caricamento audio su AWS S3 in corso...');
       const audioUploadFile: any = {
         uri: tempLocalAudioPath,
-        name: `${videoId}.m4a`,
-        type: 'audio/mp4',
+        name: `${videoId}.mp3`,
+        type: 'audio/mpeg',
       };
 
       const uploadedAudioUrl = await uploadApi.uploadAudio(audioUploadFile);
+      console.log('✅ Audio caricato con successo su S3. URL finale:', uploadedAudioUrl);
       setUrlFileAudio(uploadedAudioUrl);
 
       // Cancella il file temporaneo dalla memoria del telefono

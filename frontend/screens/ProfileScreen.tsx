@@ -367,9 +367,11 @@ export function ProfileScreen() {
           <View style={[styles.card, isRegisterMode && styles.cardRegister]}>
             {!isRegisterMode ? (
               <View style={styles.headerHero}>
-                <View style={styles.logoCircle}>
-                  <Ionicons name="musical-note" size={32} color={theme.colors.primary} />
-                </View>
+                <Image 
+                  source={require('../assets/logo-musicapp.jpg')} 
+                  style={styles.logoImage} 
+                  resizeMode="cover"
+                />
                 <Text style={styles.heroTitle}>MusicApp</Text>
               </View>
             ) : (
@@ -675,6 +677,14 @@ const styles = StyleSheet.create({
   headerHero: {
     alignItems: 'center',
     marginBottom: theme.spacing.xl,
+  },
+  logoImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 22,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   logoCircle: {
     width: 64,

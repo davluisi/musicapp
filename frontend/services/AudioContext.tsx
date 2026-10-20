@@ -157,6 +157,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPlaybackDuration(0);
 
     const audioStreamUrl = getMediaUrl(song.urlFileAudio);
+    console.log('🎵 Tentativo riproduzione audioStreamUrl:', audioStreamUrl);
     const newPlayer = createAudioPlayer(audioStreamUrl, {
       downloadFirst: false,
     });
@@ -164,8 +165,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const sub = newPlayer.addListener('playbackStatusUpdate', (status: AudioStatus) => {
       if (status.error) {
-        console.error('Audio playback error in status:', status.error);
-        showDialog('Errore Audio', 'Errore durante la riproduzione: ' + status.error);
+        console.error('Audio playback error in status:', status.error, 'per URL:', audioStreamUrl);
+        showDialog('Errore Audio', 'Impossibile riprodurre: ' + status.error + '\nURL: ' + audioStreamUrl);
         setIsPlaying(false);
         return;
       }
