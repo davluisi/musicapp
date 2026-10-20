@@ -60,6 +60,13 @@ export interface Song {
   artisti: Artist[];
 }
 
+export interface AppVersionInfo {
+  version: string;
+  apkUrl: string;
+  releaseNotes?: string;
+  mandatory?: boolean;
+}
+
 export interface User {
   id: number;
   nome: string;
@@ -232,5 +239,18 @@ export const uploadApi = {
   downloadFromYouTube: async (url: string): Promise<YouTubeExtractResult> => {
     const response = await api.post('/upload/youtube', { url });
     return response.data.data;
+  },
+};
+
+export const appService = {
+  getLatestVersion: async (): Promise<AppVersionInfo> => {
+    const response = await api.get('/app/version');
+    return response.data.data;
+  },
+  getDownloadUrl: (apkUrl: string): string => {
+    if (apkUrl.startsWith('http://') || apkUrl.startsWith('https://')) {
+      return apkUrl;
+    }
+    return `${currentBaseUrl}${apkUrl.startsWith('/') ? '' : '/'}${apkUrl}`;
   },
 };

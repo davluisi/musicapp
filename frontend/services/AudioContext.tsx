@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { showDialog } from './DialogContext';
-import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus } from 'expo-audio';
+import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus, AudioMetadata } from 'expo-audio';
 import { Song, getMediaUrl, songApi, playlistApi } from './api';
 
 export interface AudioContextType {
@@ -106,6 +106,22 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const buildSongMetadata = (song: Song): AudioMetadata => {
+    const title = getSongTitle(song);
+    const artist = song.artisti && song.artisti.length > 0
+      ? song.artisti.map(a => a.nome).join(', ')
+      : undefined;
+    const albumTitle = song.album?.nome || undefined;
+    const artworkUrl = song.urlImmagine ? getMediaUrl(song.urlImmagine) : undefined;
+
+    return {
+      title,
+      artist,
+      albumTitle,
+      artworkUrl,
+    };
+  };
+
   const stopAndClearPlayer = () => {
     if (listenerSubRef.current) {
       listenerSubRef.current.remove();
@@ -113,6 +129,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     if (playerRef.current) {
       try {
+        if (typeof (playerRef.current as any).clearLockScreenControls === 'function') {
+          (playerRef.current as any).clearLockScreenControls();
+        }
         playerRef.current.pause();
         playerRef.current.remove();
       } catch (e) {
@@ -206,6 +225,19 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
     listenerSubRef.current = sub;
+
+    // Attiva i controlli permanenti nella tendina notifiche e a schermo bloccato (stile Spotify)
+    try {
+      if (typeof (newPlayer as any).setActiveForLockScreen === 'function') {
+        const metadata = buildSongMetadata(song);
+        (newPlayer as any).setActiveForLockScreen(true, metadata, {
+          showSeekForward: true,
+          showSeekBackward: true,
+        });
+      }
+    } catch (e) {
+      console.warn('Impossibile attivare controlli di riproduzione permanente / lock screen:', e);
+    }
 
     if (autoStart) {
       newPlayer.play();

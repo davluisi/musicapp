@@ -255,3 +255,36 @@ AWS Configuration:
 - Commit messages: Conventional Commits format
 - Never commit secrets or API keys
 - Run tests before committing
+
+## APK Release & Update Workflow (Spotifai)
+
+L'applicazione dispone di un sistema di aggiornamento automatico all'avvio:
+- Il backend espone gli endpoint `/api/v1/app/version` (controllo versione), `/api/v1/app/download` (download diretto APK da S3) e `/api/v1/app/upload-apk` (caricamento e sostituzione automatica del vecchio APK).
+- All'avvio dell'app mobile, `App.tsx` confronta `CURRENT_VERSION` con la versione sul server; se inferiore, mostra la modale `UpdateModal` per scaricare e installare il nuovo APK sovrascrivendo la versione corrente senza perdere dati.
+
+### Procedura per rilasciare un aggiornamento dell'APK:
+
+1. **Incrementare la versione**:
+   - In `frontend/app.json`: aggiornare `"version"` (es. da `"1.0.0"` a `"1.0.1"`).
+   - In `frontend/App.tsx`: aggiornare la costante `CURRENT_VERSION = '1.0.1'`.
+
+2. **Compilare il nuovo APK Android**:
+   ```bash
+   cd frontend
+   # Con EAS Build (build standalone APK locale o cloud)
+   eas build --platform android --profile preview --local
+   # Oppure se si usa il comando Expo prebuild:
+   # npx expo run:android --variant release
+   ```
+
+3. **Caricare il nuovo APK (e rimuovere automaticamente il vecchio da S3)**:
+   Inviare il nuovo file APK all'endpoint dedicato:
+   ```bash
+   curl -X POST "https://music.davideluisi.com/api/v1/app/upload-apk" \
+     -F "file=@percorso/del/tuo-spotifai.apk" \
+     -F "version=1.0.1" \
+     -F "releaseNotes=Descrizione delle novità o fix inclusi" \
+     -F "mandatory=false"
+   ```
+   *Nota: L'endpoint cancella automaticamente il file precedente su S3 (`apk/spotifai-latest.apk`) prima di salvare quello nuovo, evitando sprechi di memoria.*
+

@@ -189,7 +189,7 @@ export function ProfileScreen() {
         urlImmagineProfilo: profileImageUri || undefined,
       });
       login(newUser);
-      showDialog('Registrazione Riuscita', `Benvenuto su MusicApp, ${newUser.nome}!`);
+      showDialog('Registrazione Riuscita', `Benvenuto su Spotifai, ${newUser.nome}!`);
       resetForm();
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Impossibile completare la registrazione';
@@ -372,7 +372,7 @@ export function ProfileScreen() {
                   style={styles.logoImage} 
                   resizeMode="cover"
                 />
-                <Text style={styles.heroTitle}>MusicApp</Text>
+                <Text style={styles.heroTitle}>Spotifai</Text>
               </View>
             ) : (
               <View style={styles.registerHeader}>

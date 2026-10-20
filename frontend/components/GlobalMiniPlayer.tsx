@@ -63,7 +63,7 @@ export function NowPlayingBanner({ floating = true }: { floating?: boolean }) {
           <Text style={styles.miniPlayerArtist} numberOfLines={1}>
             {activeSong.artisti && activeSong.artisti.length > 0
               ? activeSong.artisti.map(a => a.nome).join(', ')
-              : 'MusicApp Player'}
+              : 'Spotifai Player'}
           </Text>
         </View>
       </TouchableOpacity>

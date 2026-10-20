@@ -13,3 +13,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Android APKs
+*.apk
