@@ -277,8 +277,16 @@ L'applicazione dispone di un sistema di aggiornamento automatico all'avvio:
    # npx expo run:android --variant release
    ```
 
-3. **Caricare il nuovo APK (e rimuovere automaticamente il vecchio da S3)**:
-   Inviare il nuovo file APK all'endpoint dedicato:
+3. **Registrare o caricare il nuovo APK**:
+   È possibile registrare la nuova versione direttamente indicando l'URL dell'archivio (es. generato da EAS):
+   ```bash
+   curl -X POST "https://music.davideluisi.com/api/v1/app/register-version" \
+     -d "version=1.0.1" \
+     -d "apkUrl=https://expo.dev/artifacts/eas/..." \
+     -d "releaseNotes=Descrizione delle novità o fix inclusi" \
+     -d "mandatory=false"
+   ```
+   Oppure inviare il file APK binario completo su S3:
    ```bash
    curl -X POST "https://music.davideluisi.com/api/v1/app/upload-apk" \
      -F "file=@percorso/del/tuo-spotifai.apk" \
