@@ -142,4 +142,34 @@ public class AppVersionController {
             return ResponseEntity.status(500).body(ApiResponse.error("Errore durante il caricamento: " + e.getMessage()));
         }
     }
+
+    /**
+     * Endpoint per registrare / notificare una nuova versione senza dover ricaricare l'APK via Nginx.
+     * Utile se l'APK è già presente su S3 o su un hosting esterno (es. EAS Artifacts).
+     */
+    @PostMapping("/register-version")
+    public ResponseEntity<ApiResponse<AppVersionDto>> registerVersion(
+            @RequestParam("version") String version,
+            @RequestParam(value = "apkUrl", required = false) String apkUrl,
+            @RequestParam(value = "releaseNotes", required = false) String releaseNotes,
+            @RequestParam(value = "mandatory", defaultValue = "false") Boolean mandatory) {
+
+        AppVersion appVersion = AppVersion.builder()
+                .version(version)
+                .apkUrl(apkUrl != null && !apkUrl.isBlank() ? apkUrl : "/app/download")
+                .releaseNotes(releaseNotes != null ? releaseNotes : "Nuova versione disponibile")
+                .mandatory(mandatory)
+                .build();
+
+        AppVersion saved = appVersionRepository.save(appVersion);
+
+        AppVersionDto dto = AppVersionDto.builder()
+                .version(saved.getVersion())
+                .apkUrl(saved.getApkUrl())
+                .releaseNotes(saved.getReleaseNotes())
+                .mandatory(saved.getMandatory())
+                .build();
+
+        return ResponseEntity.ok(ApiResponse.success(dto, "Versione registrata con successo"));
+    }
 }
