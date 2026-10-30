@@ -1,0 +1,23 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index fb2d0b5..1f13ba2 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+@@ -68,6 +68,18 @@ class AudioPlayer(
+   override var lockScreenOptions: AudioLockScreenOptions? = null
+   override var mediaSession: MediaSession = buildBasicMediaSession(context, ref) { requestPlay() }
+   override val serviceConnection = AudioPlaybackServiceConnection(WeakReference(this), appContext)
++  override val supportsNextTrack: Boolean
++    get() = true
++  override val supportsPreviousTrack: Boolean
++    get() = true
++
++  override fun nextTrack() {
++    sendStatusUpdate(mapOf("action" to "nextTrack"))
++  }
++
++  override fun previousTrack() {
++    sendStatusUpdate(mapOf("action" to "previousTrack"))
++  }
+ 
+   override val isLive: Boolean
+     get() = ref.isCurrentMediaItemLive

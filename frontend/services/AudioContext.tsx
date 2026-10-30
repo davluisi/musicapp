@@ -182,7 +182,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     playerRef.current = newPlayer;
 
-    const sub = newPlayer.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+    const sub = newPlayer.addListener('playbackStatusUpdate', (status: any) => {
+      // Gestione comandi da tendina di notifica / lockscreen
+      if (status?.action === 'nextTrack') {
+        nextSong();
+        return;
+      }
+      if (status?.action === 'previousTrack') {
+        restartSong();
+        return;
+      }
+
       if (status.error) {
         console.error('Audio playback error in status:', status.error, 'per URL:', audioStreamUrl);
         showDialog('Errore Audio', 'Impossibile riprodurre: ' + status.error + '\nURL: ' + audioStreamUrl);
