@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import axios from 'axios';
-import { songApi, artistApi, albumApi, playlistApi, uploadApi, getMediaUrl, Song, Artist, Album, Playlist } from '../services/api';
+import { songApi, artistApi, albumApi, playlistApi, uploadApi, getMediaUrl, getSongCoverUrl, Song, Artist, Album, Playlist } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { useAudio } from '../services/AudioContext';
 import { theme } from '../services/theme';
@@ -50,6 +50,9 @@ export function SongsScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [downloadingAudio, setDownloadingAudio] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [tempYoutubeThumbnail, setTempYoutubeThumbnail] = useState<string | null>(null);
+  const [tempYoutubeVideoId, setTempYoutubeVideoId] = useState<string | null>(null);
+  const [uploadingYtImage, setUploadingYtImage] = useState(false);
 
   // Picker modals states
   const [artistPickerVisible, setArtistPickerVisible] = useState(false);
@@ -71,6 +74,8 @@ export function SongsScreen() {
     setSelectedAlbum(null);
     setSelectedArtists([]);
     setSelectedPlaylists([]);
+    setTempYoutubeThumbnail(null);
+    setTempYoutubeVideoId(null);
     setModalVisible(true);
   };
 
@@ -84,6 +89,8 @@ export function SongsScreen() {
     setSelectedAlbum(song.album ? song.album.id : null);
     setSelectedArtists(song.artisti ? song.artisti.map(a => a.id) : []);
     setSelectedPlaylists([]);
+    setTempYoutubeThumbnail(null);
+    setTempYoutubeVideoId(null);
     setModalVisible(true);
 
     if (isLoggedIn && user) {
@@ -108,12 +115,16 @@ export function SongsScreen() {
       const selectedAlbumObject = selectedAlbum ? albums.find(a => a.id === selectedAlbum) : undefined;
 
       let savedSongId: number;
+      const effectiveCoverUrl = (selectedAlbumObject && selectedAlbumObject.urlImmagine)
+        ? selectedAlbumObject.urlImmagine
+        : (urlImmagine || undefined);
+
       if (editingSong) {
         const updated = await songApi.update(editingSong.id, {
           nome: nome.trim() || undefined,
           urlFileAudio: urlFileAudio.trim(),
           anno: anno ? Number(anno) : undefined,
-          urlImmagine: urlImmagine || undefined,
+          urlImmagine: effectiveCoverUrl,
           album: selectedAlbumObject || undefined,
           artisti: selectedArtistObjects,
         });
@@ -124,7 +135,7 @@ export function SongsScreen() {
           nome: nome.trim() || undefined,
           urlFileAudio: urlFileAudio.trim(),
           anno: anno ? Number(anno) : undefined,
-          urlImmagine: urlImmagine || undefined,
+          urlImmagine: effectiveCoverUrl,
           album: selectedAlbumObject || undefined,
           artisti: selectedArtistObjects,
         });
@@ -152,6 +163,8 @@ export function SongsScreen() {
       setSelectedAlbum(null);
       setSelectedArtists([]);
       setSelectedPlaylists([]);
+      setTempYoutubeThumbnail(null);
+      setTempYoutubeVideoId(null);
     } catch (error) {
       showDialog('Errore', editingSong ? 'Impossibile modificare il brano' : 'Impossibile salvare il brano');
     } finally {
@@ -351,23 +364,10 @@ export function SongsScreen() {
         setAnno(identifiedYear);
       }
 
-      // Imposta o crea copertina su S3
-      if (thumbnailUrl && (!urlImmagine || urlImmagine.trim() === '')) {
-        try {
-          const tempThumbUri = `${FileSystem.cacheDirectory}thumb_${videoId}.jpg`;
-          const thumbDownload = await FileSystem.downloadAsync(thumbnailUrl, tempThumbUri);
-          const thumbFile: any = {
-            uri: thumbDownload.uri,
-            name: `thumb_${videoId}.jpg`,
-            type: 'image/jpeg',
-          };
-          const uploadedThumbUrl = await uploadApi.uploadImage('canzone', thumbFile);
-          setUrlImmagine(uploadedThumbUrl);
-          await FileSystem.deleteAsync(tempThumbUri, { idempotent: true });
-        } catch (imgErr) {
-          console.log('Thumbnail upload fallback to direct URL', imgErr);
-          setUrlImmagine(thumbnailUrl);
-        }
+      // Salva l'URL della copertina YouTube nella memoria temporanea senza caricarla subito su S3
+      if (thumbnailUrl) {
+        setTempYoutubeThumbnail(thumbnailUrl);
+        setTempYoutubeVideoId(videoId);
       }
 
       // Cerca corrispondenza Artista solo tra quelli già presenti nel database (senza creare nuovi artisti)
@@ -397,6 +397,9 @@ export function SongsScreen() {
 
         if (matchedAlbum && selectedAlbum !== matchedAlbum.id) {
           setSelectedAlbum(matchedAlbum.id);
+          if (matchedAlbum.urlImmagine) {
+            setUrlImmagine(matchedAlbum.urlImmagine);
+          }
         }
       }
 
@@ -460,7 +463,7 @@ export function SongsScreen() {
       tempLocalAudioPath = null;
 
       setYoutubeUrl('');
-      showDialog('Download Completato', 'Audio e copertina estratti con successo da YouTube e salvati su AWS S3!');
+      showDialog('Download Completato', 'Audio estratto con successo da YouTube e salvato su AWS S3!');
     } catch (error: any) {
       if (tempLocalAudioPath) {
         try { await FileSystem.deleteAsync(tempLocalAudioPath, { idempotent: true }); } catch (_) {}
@@ -470,6 +473,40 @@ export function SongsScreen() {
       showDialog('Errore YouTube', serverMsg);
     } finally {
       setDownloadingAudio(false);
+    }
+  };
+
+  const applyYouTubeThumbnail = async () => {
+    if (!tempYoutubeThumbnail) return;
+    setUploadingYtImage(true);
+    try {
+      let file: any;
+      const vidId = tempYoutubeVideoId || 'video';
+      if (Platform.OS === 'web') {
+        const response = await fetch(tempYoutubeThumbnail);
+        const blob = await response.blob();
+        file = new File([blob], `thumb_${vidId}.jpg`, { type: 'image/jpeg' });
+      } else {
+        const tempThumbUri = `${FileSystem.cacheDirectory}thumb_${vidId}.jpg`;
+        const thumbDownload = await FileSystem.downloadAsync(tempYoutubeThumbnail, tempThumbUri);
+        file = {
+          uri: thumbDownload.uri,
+          name: `thumb_${vidId}.jpg`,
+          type: 'image/jpeg',
+        };
+      }
+      const uploadedThumbUrl = await uploadApi.uploadImage('canzone', file);
+      setUrlImmagine(uploadedThumbUrl);
+      if (Platform.OS !== 'web') {
+        const tempThumbUri = `${FileSystem.cacheDirectory}thumb_${vidId}.jpg`;
+        await FileSystem.deleteAsync(tempThumbUri, { idempotent: true });
+      }
+      showDialog('Copertina Impostata', 'L\'immagine del video YouTube è stata caricata con successo!');
+    } catch (imgErr) {
+      console.log('Thumbnail upload fallback to direct URL', imgErr);
+      setUrlImmagine(tempYoutubeThumbnail);
+    } finally {
+      setUploadingYtImage(false);
     }
   };
 
@@ -538,8 +575,8 @@ export function SongsScreen() {
         activeOpacity={0.8}
       >
         <View style={styles.songCoverContainer}>
-          {item.urlImmagine ? (
-            <Image source={{ uri: getMediaUrl(item.urlImmagine) }} style={styles.songCover} />
+          {getSongCoverUrl(item) ? (
+            <Image source={{ uri: getSongCoverUrl(item) }} style={styles.songCover} />
           ) : (
             <View style={styles.songCoverPlaceholder}>
               <Ionicons name="musical-note" size={24} color={theme.colors.textMuted} />
@@ -717,28 +754,47 @@ export function SongsScreen() {
               {/* Cover Song Picker and Info */}
               <View style={styles.coverSection}>
                 <View style={styles.coverAndInfoRow}>
-                  <TouchableOpacity
-                    style={styles.modalCoverPicker}
-                    onPress={pickImage}
-                    disabled={uploadingImage}
-                  >
-                    {urlImmagine ? (
-                      <>
-                        <Image source={{ uri: getMediaUrl(urlImmagine) }} style={styles.modalCoverPreview} />
-                        <View style={styles.modalCoverOverlayBadge}>
-                          <Ionicons name="camera" size={14} color="#fff" />
-                          <Text style={styles.modalCoverOverlayBadgeText}>Cambia</Text>
+                  <View style={styles.coverPickerColumn}>
+                    <TouchableOpacity
+                      style={styles.modalCoverPicker}
+                      onPress={pickImage}
+                      disabled={uploadingImage || uploadingYtImage}
+                    >
+                      {urlImmagine ? (
+                        <>
+                          <Image source={{ uri: getMediaUrl(urlImmagine) }} style={styles.modalCoverPreview} />
+                          <View style={styles.modalCoverOverlayBadge}>
+                            <Ionicons name="camera" size={14} color="#fff" />
+                            <Text style={styles.modalCoverOverlayBadgeText}>Cambia</Text>
+                          </View>
+                        </>
+                      ) : (
+                        <View style={styles.modalCoverPlaceholder}>
+                          <Ionicons name="image-outline" size={28} color={theme.colors.textSecondary} />
+                          <Text style={styles.modalCoverText}>
+                            {uploadingImage ? 'Caricamento...' : 'Seleziona Copertina'}
+                          </Text>
                         </View>
-                      </>
-                    ) : (
-                      <View style={styles.modalCoverPlaceholder}>
-                        <Ionicons name="image-outline" size={28} color={theme.colors.textSecondary} />
-                        <Text style={styles.modalCoverText}>
-                          {uploadingImage ? 'Caricamento...' : 'Seleziona Copertina'}
-                        </Text>
-                      </View>
+                      )}
+                    </TouchableOpacity>
+
+                    {tempYoutubeThumbnail && (
+                      <TouchableOpacity
+                        style={styles.useYtThumbBtn}
+                        onPress={applyYouTubeThumbnail}
+                        disabled={uploadingYtImage || uploadingImage}
+                      >
+                        {uploadingYtImage ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <Ionicons name="logo-youtube" size={14} color="#FF0000" />
+                            <Text style={styles.useYtThumbBtnText}>Usa miniatura YouTube</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
+                  </View>
 
                   <View style={styles.songInfoInputs}>
                     <TextInput
@@ -785,7 +841,15 @@ export function SongsScreen() {
                       <Text style={styles.selectedBadgeText} numberOfLines={1}>
                         {albums.find(a => a.id === selectedAlbum)?.nome || 'Album'}
                       </Text>
-                      <TouchableOpacity onPress={() => setSelectedAlbum(null)}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const prevAlb = albums.find(a => a.id === selectedAlbum);
+                          if (prevAlb?.urlImmagine && urlImmagine === prevAlb.urlImmagine) {
+                            setUrlImmagine('');
+                          }
+                          setSelectedAlbum(null);
+                        }}
+                      >
                         <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
                       </TouchableOpacity>
                     </View>
@@ -942,6 +1006,10 @@ export function SongsScreen() {
                   selectedAlbum === null && styles.pickerItemRowSelected,
                 ]}
                 onPress={() => {
+                  const prevAlb = albums.find(a => a.id === selectedAlbum);
+                  if (prevAlb?.urlImmagine && urlImmagine === prevAlb.urlImmagine) {
+                    setUrlImmagine('');
+                  }
                   setSelectedAlbum(null);
                   setAlbumPickerVisible(false);
                 }}
@@ -973,6 +1041,9 @@ export function SongsScreen() {
                       ]}
                       onPress={() => {
                         setSelectedAlbum(album.id);
+                        if (album.urlImmagine) {
+                          setUrlImmagine(album.urlImmagine);
+                        }
                         setAlbumPickerVisible(false);
                       }}
                     >
@@ -1514,6 +1585,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
+  },
+  coverPickerColumn: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  useYtThumbBtn: {
+    width: 110,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: theme.colors.surfaceHighlight,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceBorder,
+    borderRadius: theme.borderRadius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  useYtThumbBtnText: {
+    color: theme.colors.text,
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+    flexShrink: 1,
   },
   songInfoInputs: {
     flex: 1,

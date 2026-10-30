@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { playlistApi, uploadApi, getMediaUrl, Playlist, Song } from '../services/api';
+import { playlistApi, uploadApi, getMediaUrl, getSongCoverUrl, Playlist, Song } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { useAudio } from '../services/AudioContext';
 import { NowPlayingBanner } from '../components/GlobalMiniPlayer';
@@ -451,8 +451,8 @@ export function PlaylistsScreen() {
                       activeOpacity={0.7}
                     >
                       <Text style={styles.detailTrackNumber}>{index + 1}</Text>
-                      {song.urlImmagine ? (
-                        <Image source={{ uri: getMediaUrl(song.urlImmagine) }} style={styles.detailTrackThumb} />
+                      {getSongCoverUrl(song) ? (
+                        <Image source={{ uri: getSongCoverUrl(song) }} style={styles.detailTrackThumb} />
                       ) : (
                         <View style={styles.detailTrackThumbPlaceholder}>
                           <Ionicons name="musical-note" size={16} color={theme.colors.textMuted} />

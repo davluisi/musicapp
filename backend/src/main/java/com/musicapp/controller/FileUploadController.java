@@ -43,6 +43,9 @@ public class FileUploadController {
     @Autowired
     private AlbumRepository albumRepository;
 
+    @Autowired
+    private com.musicapp.service.S3CleanupService s3CleanupService;
+
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
 
@@ -260,7 +263,7 @@ public class FileUploadController {
                 try {
                     String ext = thumbFile.getName().contains(".") ? thumbFile.getName().substring(thumbFile.getName().lastIndexOf(".")) : ".jpg";
                     String contentType = ext.equalsIgnoreCase(".webp") ? "image/webp" : (ext.equalsIgnoreCase(".png") ? "image/png" : "image/jpeg");
-                    String imgS3Key = "canzoni/" + UUID.randomUUID() + ext;
+                    String imgS3Key = "canzoni/immagini/" + UUID.randomUUID() + ext;
                     PutObjectRequest imgPutRequest = PutObjectRequest.builder()
                             .bucket(bucketName)
                             .key(imgS3Key)
@@ -398,11 +401,22 @@ public class FileUploadController {
         }
     }
 
+    @PostMapping("/sync-covers-and-cleanup")
+    public ResponseEntity<ApiResponse<String>> syncCoversAndCleanup() {
+        try {
+            s3CleanupService.runRetroactiveAlbumCoverSyncAndCleanup();
+            return ResponseEntity.ok(new ApiResponse<>("OK", "Sincronizzazione copertine e pulizia immagini orfane completata con successo", "success"));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(new ApiResponse<>(null, "Errore durante la sincronizzazione: " + e.getMessage(), "error"));
+        }
+    }
+
     private String getFolderForType(String type) {
         return switch (type.toLowerCase()) {
             case "artista" -> "artisti/";
             case "album" -> "album/";
-            case "canzone" -> "canzoni/";
+            case "canzone" -> "canzoni/immagini/";
             case "utente" -> "utenti/";
             default -> "other/";
         };

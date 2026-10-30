@@ -47,15 +47,8 @@ public class CanzoneService {
         Canzone canzone = canzoneRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Canzone non trovata"));
         
-        // Se l'audio è cambiato, rimuovi il vecchio da S3
-        if (canzone.getUrlFileAudio() != null && !canzone.getUrlFileAudio().equals(canzoneDTO.getUrlFileAudio())) {
-            s3StorageService.deleteFileByUrlOrKey(canzone.getUrlFileAudio());
-        }
-
-        // Se l'immagine è cambiata, rimuovi la vecchia da S3
-        if (canzone.getUrlImmagine() != null && !canzone.getUrlImmagine().equals(canzoneDTO.getUrlImmagine())) {
-            s3StorageService.deleteFileByUrlOrKey(canzone.getUrlImmagine());
-        }
+        String oldAudioUrl = canzone.getUrlFileAudio();
+        String oldImageUrl = canzone.getUrlImmagine();
 
         canzone.setNome(canzoneDTO.getNome());
         canzone.setUrlFileAudio(canzoneDTO.getUrlFileAudio());
@@ -66,6 +59,12 @@ public class CanzoneService {
             Album album = albumRepository.findById(canzoneDTO.getAlbum().getId())
                     .orElseThrow(() -> new RuntimeException("Album non trovato"));
             canzone.setAlbum(album);
+            // Se la canzone appartiene ad un album con copertina, usa la stessa copertina dell'album
+            if (album.getUrlImmagine() != null && !album.getUrlImmagine().isBlank()) {
+                canzone.setUrlImmagine(album.getUrlImmagine());
+            }
+        } else {
+            canzone.setAlbum(null);
         }
         
         if (canzoneDTO.getArtisti() != null) {
@@ -74,6 +73,16 @@ public class CanzoneService {
                             .orElseThrow(() -> new RuntimeException("Artista non trovato")))
                     .collect(Collectors.toList());
             canzone.setArtisti(new java.util.HashSet<>(artisti));
+        }
+
+        // Se l'audio è cambiato, rimuovi il vecchio da S3
+        if (oldAudioUrl != null && !oldAudioUrl.equals(canzone.getUrlFileAudio())) {
+            s3StorageService.deleteFileByUrlOrKey(oldAudioUrl);
+        }
+
+        // Se l'immagine è cambiata, rimuovi la vecchia da S3 solo se non è condivisa con un album o altre canzoni
+        if (oldImageUrl != null && !oldImageUrl.equals(canzone.getUrlImmagine())) {
+            deleteSongImageIfUnreferenced(oldImageUrl, canzone.getId());
         }
         
         Canzone updated = canzoneRepository.save(canzone);
@@ -86,10 +95,28 @@ public class CanzoneService {
                 s3StorageService.deleteFileByUrlOrKey(canzone.getUrlFileAudio());
             }
             if (canzone.getUrlImmagine() != null) {
-                s3StorageService.deleteFileByUrlOrKey(canzone.getUrlImmagine());
+                deleteSongImageIfUnreferenced(canzone.getUrlImmagine(), canzone.getId());
             }
             canzoneRepository.delete(canzone);
         });
+    }
+
+    private void deleteSongImageIfUnreferenced(String imageUrl, Long currentCanzoneId) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return;
+        }
+        // Non eliminare se l'immagine appartiene a un album o è nella cartella album/
+        String key = s3StorageService.extractKeyFromUrl(imageUrl);
+        if (key != null && key.startsWith("album/")) {
+            return;
+        }
+        if (albumRepository.existsByUrlImmagine(imageUrl)) {
+            return;
+        }
+        if (currentCanzoneId != null && canzoneRepository.existsByUrlImmagineAndIdNot(imageUrl, currentCanzoneId)) {
+            return;
+        }
+        s3StorageService.deleteFileByUrlOrKey(imageUrl);
     }
 
     public List<CanzoneDTO> toCanzoneDTOList(Collection<Canzone> canzoni) {
@@ -104,12 +131,17 @@ public class CanzoneService {
                 .map(this::toArtistaDTO)
                 .collect(Collectors.toList());
         
+        String effectiveImageUrl = canzone.getUrlImmagine();
+        if (canzone.getAlbum() != null && canzone.getAlbum().getUrlImmagine() != null && !canzone.getAlbum().getUrlImmagine().isBlank()) {
+            effectiveImageUrl = canzone.getAlbum().getUrlImmagine();
+        }
+        
         return new CanzoneDTO(
                 canzone.getId(),
                 canzone.getNome(),
                 canzone.getUrlFileAudio(),
                 canzone.getAnno(),
-                canzone.getUrlImmagine(),
+                effectiveImageUrl,
                 albumDTO,
                 artistiDTO
         );
@@ -144,6 +176,9 @@ public class CanzoneService {
             Album album = albumRepository.findById(dto.getAlbum().getId())
                     .orElseThrow(() -> new RuntimeException("Album non trovato"));
             canzone.setAlbum(album);
+            if (album.getUrlImmagine() != null && !album.getUrlImmagine().isBlank()) {
+                canzone.setUrlImmagine(album.getUrlImmagine());
+            }
         }
         
         if (dto.getArtisti() != null) {

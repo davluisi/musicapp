@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio } from '../services/AudioContext';
 import { useAuth } from '../services/AuthContext';
-import { getMediaUrl, Playlist, Song, playlistApi, songApi } from '../services/api';
+import { getMediaUrl, getSongCoverUrl, Playlist, Song, playlistApi, songApi } from '../services/api';
 import { navigationRef } from '../services/navigation';
 import { theme } from '../services/theme';
 
@@ -46,9 +46,9 @@ export function NowPlayingBanner({ floating = true }: { floating?: boolean }) {
         onPress={() => openSongDetail(activeSong)}
         activeOpacity={0.8}
       >
-        {activeSong.urlImmagine ? (
+        {getSongCoverUrl(activeSong) ? (
           <Image
-            source={{ uri: getMediaUrl(activeSong.urlImmagine) }}
+            source={{ uri: getSongCoverUrl(activeSong) }}
             style={styles.miniPlayerCover}
           />
         ) : (
@@ -228,9 +228,9 @@ export const GlobalMiniPlayer: React.FC<GlobalMiniPlayerProps> = ({
 
             {/* Center: Large Cover Art */}
             <View style={styles.detailCoverSection}>
-              {detailedSong.urlImmagine ? (
+              {getSongCoverUrl(detailedSong) ? (
                 <Image
-                  source={{ uri: getMediaUrl(detailedSong.urlImmagine) }}
+                  source={{ uri: getSongCoverUrl(detailedSong) }}
                   style={styles.detailLargeCover}
                   resizeMode="cover"
                 />

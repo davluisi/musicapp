@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface CanzoneRepository extends JpaRepository<Canzone, Long> {
+    boolean existsByUrlImmagineAndIdNot(String urlImmagine, Long id);
 }

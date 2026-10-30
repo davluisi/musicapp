@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Album, Song, getMediaUrl } from '../services/api';
+import { Album, Song, getMediaUrl, getSongCoverUrl } from '../services/api';
 import { useAudio } from '../services/AudioContext';
 import { NowPlayingBanner } from './GlobalMiniPlayer';
 import { theme } from '../services/theme';
@@ -152,8 +152,8 @@ export function AlbumDetailModal({
                       activeOpacity={0.7}
                     >
                       <Text style={styles.detailTrackNumber}>{index + 1}</Text>
-                      {song.urlImmagine ? (
-                        <Image source={{ uri: getMediaUrl(song.urlImmagine) }} style={styles.detailTrackThumb} />
+                      {getSongCoverUrl(song) ? (
+                        <Image source={{ uri: getSongCoverUrl(song) }} style={styles.detailTrackThumb} />
                       ) : (
                         <View style={styles.detailTrackThumbPlaceholder}>
                           <Ionicons name="musical-note" size={16} color={theme.colors.textMuted} />

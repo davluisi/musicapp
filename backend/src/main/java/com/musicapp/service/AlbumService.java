@@ -60,6 +60,15 @@ public class AlbumService {
         }
         
         Album updated = albumRepository.save(album);
+        
+        // Sincronizza l'immagine copertina delle canzoni appartenenti a questo album
+        if (updated.getCanzoni() != null && !updated.getCanzoni().isEmpty()) {
+            for (com.musicapp.entity.Canzone c : updated.getCanzoni()) {
+                c.setUrlImmagine(updated.getUrlImmagine());
+            }
+            albumRepository.save(updated);
+        }
+        
         return toDTO(updated);
     }
 

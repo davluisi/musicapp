@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 @Service
@@ -16,6 +17,36 @@ public class S3StorageService {
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
+
+    @Value("${aws.s3.region}")
+    private String region;
+
+    public String buildUrlForKey(String key) {
+        return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + key;
+    }
+
+    /**
+     * Sposta un oggetto S3 da una chiave sorgente a una chiave di destinazione nello stesso bucket.
+     */
+    public boolean moveObject(String sourceKey, String targetKey) {
+        if (sourceKey == null || targetKey == null || sourceKey.equals(targetKey)) {
+            return false;
+        }
+        try {
+            log.info("Spostamento oggetto S3: '{}' -> '{}'", sourceKey, targetKey);
+            s3Client.copyObject(CopyObjectRequest.builder()
+                    .sourceBucket(bucketName)
+                    .sourceKey(sourceKey)
+                    .destinationBucket(bucketName)
+                    .destinationKey(targetKey)
+                    .build());
+            deleteFileByUrlOrKey(sourceKey);
+            return true;
+        } catch (Exception e) {
+            log.error("Errore durante lo spostamento da '{}' a '{}': {}", sourceKey, targetKey, e.getMessage());
+            return false;
+        }
+    }
 
     /**
      * Estrae la chiave S3 da un URL completo di S3 o restituisce la stringa se è già una chiave.

@@ -14,5 +14,6 @@
     <include file="db.changelog-008-create-playlist-canzone.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-009-drop-cognome-from-artista.xml" relativeToChangelogFile="true"/>
     <include file="db.changelog-010-create-app-version.xml" relativeToChangelogFile="true"/>
+    <include file="db.changelog-011-sync-canzone-album-cover.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

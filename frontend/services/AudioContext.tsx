@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { showDialog } from './DialogContext';
 import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus, AudioMetadata } from 'expo-audio';
-import { Song, getMediaUrl, songApi, playlistApi } from './api';
+import { Song, getMediaUrl, getSongCoverUrl, songApi, playlistApi } from './api';
 
 export interface AudioContextType {
   activeSong: Song | null;
@@ -112,7 +112,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ? song.artisti.map(a => a.nome).join(', ')
       : undefined;
     const albumTitle = song.album?.nome || undefined;
-    const artworkUrl = song.urlImmagine ? getMediaUrl(song.urlImmagine) : undefined;
+    const artworkUrl = getSongCoverUrl(song) || undefined;
 
     return {
       title,
@@ -231,8 +231,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (typeof (newPlayer as any).setActiveForLockScreen === 'function') {
         const metadata = buildSongMetadata(song);
         (newPlayer as any).setActiveForLockScreen(true, metadata, {
-          showSeekForward: true,
-          showSeekBackward: true,
+          showSeekForward: false,
+          showSeekBackward: false,
+          showNextTrack: true,
+          showPreviousTrack: true,
         });
       }
     } catch (e) {

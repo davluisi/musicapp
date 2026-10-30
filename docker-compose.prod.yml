@@ -9,6 +9,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password_qui}
     volumes:
       - musicapp-postgres-data:/var/lib/postgresql/data
+    ports:
+      # Espone Postgres su localhost del VPS (porta 5434) per consentire il tunnel SSH dallo sviluppo locale
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s

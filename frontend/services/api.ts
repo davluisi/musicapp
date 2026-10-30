@@ -1,15 +1,29 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// In Expo/React Native: su Android emulator usa 10.0.2.2, su iOS/Web usa localhost, oppure usa l'IP LAN configurato
-export const DEFAULT_API_BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:8080/api/v1',
-  ios: 'http://localhost:8080/api/v1',
-  default: 'http://localhost:8080/api/v1',
-});
+export const PROD_API_BASE_URL = 'https://music.davideluisi.com/api/v1';
 
-// Possiamo memorizzare e configurare la baseURL dinamicamente
-let currentBaseUrl = 'https://music.davideluisi.com/api/v1';
+// In sviluppo (Expo Go), rileva automaticamente l'IP LAN del PC dal bundler Metro
+const getDevLanBaseUrl = (): string => {
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return `http://${host}:8080/api/v1`;
+    }
+  }
+  return Platform.select({
+    android: 'http://10.0.2.2:8080/api/v1',
+    ios: 'http://localhost:8080/api/v1',
+    default: 'http://localhost:8080/api/v1',
+  }) as string;
+};
+
+export const DEFAULT_API_BASE_URL = getDevLanBaseUrl();
+
+// Di default punta a produzione, ma in modalità sviluppo (__DEV__) verifica subito se il backend locale sul PC è acceso
+let currentBaseUrl = PROD_API_BASE_URL;
 
 export const api = axios.create({
   baseURL: currentBaseUrl,
@@ -26,6 +40,20 @@ export const setApiBaseUrl = (newUrl: string) => {
 
 export const getApiBaseUrl = () => currentBaseUrl;
 
+// Se siamo in sviluppo (__DEV__), controlla se il backend locale (run_be.bat) risponde sulla rete locale e lo usa automaticamente
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  const localUrl = getDevLanBaseUrl();
+  axios
+    .get(`${localUrl}/app/version`, { timeout: 2000 })
+    .then(() => {
+      console.log(`🔌 Backend locale rilevato! Connesso a: ${localUrl}`);
+      setApiBaseUrl(localUrl);
+    })
+    .catch(() => {
+      console.log(`☁️ Backend locale non attivo, uso backend VPS: ${PROD_API_BASE_URL}`);
+    });
+}
+
 // Se l'URL punta ad AWS S3, lo instrada tramite l'endpoint /upload/stream del nostro backend
 export const getMediaUrl = (url?: string | null): string => {
   if (!url) return '';
@@ -34,6 +62,13 @@ export const getMediaUrl = (url?: string | null): string => {
     return `${currentBaseUrl}/upload/stream?key=${encodeURIComponent(key)}`;
   }
   return url;
+};
+
+// Restituisce l'URL della copertina di una canzone dando priorità a quella dell'album associato (per evitare duplicati su S3)
+export const getSongCoverUrl = (song?: Song | null): string => {
+  if (!song) return '';
+  const coverUrl = song.album?.urlImmagine || song.urlImmagine;
+  return getMediaUrl(coverUrl);
 };
 
 export interface Artist {
