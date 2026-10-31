@@ -2,7 +2,7 @@
   "expo": {
     "name": "Spotifai",
     "slug": "frontend",
-    "version": "1.0.7",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
