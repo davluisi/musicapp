@@ -24,24 +24,6 @@ index fb2d0b5..1f13ba2 100644
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
-@@ -296,7 +296,7 @@ class AudioControlsService : MediaSessionService() {
-         CommandButton.Builder(CommandButton.ICON_PREVIOUS)
-           .setDisplayName("Previous Track")
-           .setEnabled(true)
--          .setSessionCommand(SessionCommand(ACTION_PREVIOUS_TRACK, Bundle.EMPTY))
-+          .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-           .setSlots(CommandButton.SLOT_BACK)
-           .build()
-       )
-@@ -338,7 +338,7 @@ class AudioControlsService : MediaSessionService() {
-         CommandButton.Builder(CommandButton.ICON_NEXT)
-           .setDisplayName("Next Track")
-           .setEnabled(true)
--          .setSessionCommand(SessionCommand(ACTION_NEXT_TRACK, Bundle.EMPTY))
-+          .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-           .setSlots(CommandButton.SLOT_FORWARD)
-           .build()
-       )
 @@ -421,13 +421,55 @@ class AudioControlsService : MediaSessionService() {
        override fun seekBack() {
          seekTo((currentPosition - backwardMs).coerceAtLeast(0))
@@ -98,46 +80,3 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
 +      }
      }
    }
-diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
---- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
-+++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
-@@ -51,6 +51,10 @@ class AudioMediaSessionCallback(
-       val acceptedResultBuilder = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-         .setAvailablePlayerCommands(availablePlayerCommands)
-         .setAvailableSessionCommands(availableSessionCommands)
-+
-+      session.customLayout?.let {
-+        acceptedResultBuilder.setCustomLayout(it)
-+      }
-+
-+      return acceptedResultBuilder.build()
-     } catch (e: Exception) {
-@@ -83,6 +87,24 @@ class AudioMediaSessionCallback(
-       AudioControlsService.ACTION_PREVIOUS_TRACK -> {
-         service.previousTrack()
-         Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-       }
-       else -> super.onCustomCommand(session, controller, command, args)
-     }
-   }
-+
-+  override fun onPlayerCommandRequest(
-+    session: MediaSession,
-+    controller: MediaSession.ControllerInfo,
-+    playerCommand: Int
-+  ): Int {
-+    when (playerCommand) {
-+      Player.COMMAND_SEEK_TO_NEXT,
-+      Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
-+        service.nextTrack()
-+        return SessionResult.RESULT_SUCCESS
-+      }
-+      Player.COMMAND_SEEK_TO_PREVIOUS,
-+      Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
-+        service.previousTrack()
-+        return SessionResult.RESULT_SUCCESS
-+      }
-+    }
-+    return super.onPlayerCommandRequest(session, controller, playerCommand)
-+  }
- }
