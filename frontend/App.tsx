@@ -22,7 +22,7 @@ import { appService, AppVersionInfo } from './services/api';
 import { theme } from './services/theme';
 
 // Versione corrente compilata nell'app
-const CURRENT_VERSION = '1.0.4';
+const CURRENT_VERSION = '1.0.5';
 
 /**
  * Confronta due stringhe di versione semantic versioning (es: 1.0.1 > 1.0.0)

@@ -1,298 +1,142 @@
-# MusicApp - Project Rules and Conventions
+# MusicApp (Spotifai) - Guida & Indice Globale del Progetto
 
-## Project Overview
-Music streaming mobile application for audio content management and playback.
+Questo file è il punto di ingresso per il contesto del workspace. Viene caricato automaticamente per evitare all'assistente di scansionare ripetutamente directory, perdere token o fare ricerche dispersive nel codebase.
 
-## Tech Stack
+---
 
-### Backend
-- **Framework**: Spring Boot (Java)
-- **Database**: PostgreSQL (via Docker)
-- **Database Migrations**: Liquibase
-- **Storage**: AWS S3 (for audio files and user profile images)
-- **Build Tool**: Maven
+## 🧭 Mappa Rapida dei Moduli e File di Contesto
+Per informazioni dettagliate su ciascuna componente, fare riferimento direttamente ai file dedicati:
+- **Backend (Spring Boot & DB)**: [backend/AGENTS.md](file:///c:/Progetti/musicapp/backend/AGENTS.md)
+- **Frontend (Expo & React Native)**: [frontend/AGENTS.md](file:///c:/Progetti/musicapp/frontend/AGENTS.md)
 
-### Frontend
-- **Framework**: Expo (React Native wrapper for easier development)
-- **Platform**: iOS and Android (and web support)
-- **Language**: TypeScript
+---
 
-### Infrastructure
-- **Containerization**: Docker Compose for PostgreSQL
-- **Cloud Storage**: AWS S3 bucket `musicapp-017719539384-eu-south-1-an` (region: eu-south-1)
+## 📁 Mappa Completa dei File del Progetto
 
-## Project Structure
-
-```
+```text
 musicapp/
-├── backend/                 # Spring Boot backend
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/
-│   │   │   │   └── com/musicapp/
-│   │   │   │       ├── entity/
-│   │   │   │       ├── repository/
-│   │   │   │       ├── service/
-│   │   │   │       ├── controller/
-│   │   │   │       ├── config/
-│   │   │   │       └── dto/
-│   │   │   └── resources/
-│   │   │       ├── db/              # Liquibase migrations
-│   │   │       └── application.yml
-│   │   └── test/
-│   └── pom.xml
-├── frontend/                # Expo React Native frontend
-│   ├── screens/             # Screen components
-│   │   ├── ProfileScreen.tsx
-│   │   ├── ArtistsScreen.tsx
-│   │   ├── AlbumsScreen.tsx
-│   │   └── SongsScreen.tsx
-│   ├── services/            # API service layer
-│   │   └── api.ts
-│   ├── App.tsx              # Main app component with navigation
-│   ├── package.json
-│   └── app.json
-├── docker-compose.yml       # PostgreSQL container
-└── AGENTS.md                # This file
+├── AGENTS.md                                # Contesto globale e indice del workspace (questo file)
+├── docker-compose.yml                       # Container PostgreSQL (porta 5432)
+│
+├── backend/                                 # Modulo Backend Spring Boot
+│   ├── AGENTS.md                            # Dettagli architettura backend, convenzioni e servizi
+│   ├── pom.xml                              # Dipendenze Maven (Spring Boot 3, AWS S3, Liquibase, PostgreSQL)
+│   ├── Dockerfile                           # Immagine Docker di produzione per il backend
+│   └── src/main/
+│       ├── resources/
+│       │   ├── application.yml              # Configurazione DB, porta server, AWS S3, security
+│       │   └── db/                          # Migrazioni Liquibase
+│       │       ├── db.changelog-master.xml  # Master changelog che include tutte le migrazioni
+│       │       └── db.changelog-*.xml       # Tabelle: utente, artista, canzone, album, playlist, app_version
+│       └── java/com/musicapp/
+│           ├── MusicAppApplication.java     # Main Spring Boot
+│           ├── config/                      # S3Config.java, SecurityConfig.java
+│           ├── controller/                  # Album, AppVersion, Artista, Auth, Canzone, FileUpload, Playlist
+│           ├── dto/                         # ApiResponse.java (wrapper), AlbumDTO, CanzoneDTO, ecc.
+│           ├── entity/                      # JPA Entities (Utente, Artista, Canzone, Album, Playlist, AppVersion)
+│           ├── repository/                  # Spring Data JPA Repositories
+│           └── service/                     # AlbumService, ArtistaService, AuthService, CanzoneService,
+│                                            # PlaylistService, S3StorageService, S3CleanupService
+│
+└── frontend/                                # Modulo Frontend Mobile (Expo / React Native)
+    ├── AGENTS.md                            # Dettagli architettura frontend, stato audio e componenti
+    ├── App.tsx                              # Entry point, Tab Navigation, provider di stato, UpdateModal
+    ├── app.json                             # Configurazione Expo (versione app, bundleIdentifier, icone)
+    ├── package.json                         # Dipendenze React Native, Expo, Axios, Track Player / AV
+    ├── components/
+    │   ├── AlbumDetailModal.tsx             # Modale visualizzazione album con tracce
+    │   ├── GlobalMiniPlayer.tsx             # Player persistente a fondo schermo con traccia corrente
+    │   └── UpdateModal.tsx                  # Modale per notifica e download/installazione APK da S3
+    ├── screens/
+    │   ├── SongsScreen.tsx                  # Brani, player trigger, filtri, upload brani
+    │   ├── AlbumsScreen.tsx                 # Schermata album e aperture modali
+    │   ├── ArtistsScreen.tsx                # Schermata artisti
+    │   ├── PlaylistsScreen.tsx              # Schermata playlist e aggiunta tracce
+    │   └── ProfileScreen.tsx                # Profilo utente, cambio password e avatar
+    └── services/
+        ├── api.ts                           # Client Axios centralizzato per tutti gli endpoint REST
+        ├── AudioContext.tsx                 # Context globale per riproduzione audio, coda, pause/resume
+        ├── AuthContext.tsx                  # Context autenticazione utente e token
+        ├── DialogContext.tsx                # Dialog e conferme personalizzate UI
+        ├── navigation.ts                    # Utility navigazione
+        └── theme.ts                         # Palette colori scura stile Spotify (#121212, #1DB954)
 ```
 
-## Backend Conventions
+---
 
-### Entity Naming
-- Use Java class names in PascalCase (e.g., `Utente`, `Canzone`)
-- Table names in snake_case (e.g., `utente`, `canzone`)
-- All entities must have an `id` field (Long, auto-generated)
+## ⚙️ Regole di Sviluppo & Convenzioni Chiave
 
-### Repository Layer
-- Use Spring Data JPA repositories
-- Extend `JpaRepository<Entity, Long>`
-- Repository interfaces in `repository/` package
-- Annotation `@Repository` on repository interfaces
+### 1. Backend & Database
+- **API Base**: `/api/v1`
+- **Tutte le risposte API** usano il formato wrapper `ApiResponse<T>` (`data`, `message`, `status`).
+- **Nessuna Entity esposta direttamente**: passare sempre per DTO nei controller e mappare nei Service. Tutti i DTO hanno annotazioni Lombok (`@Data`, `@NoArgsConstructor`, `@AllArgsConstructor`).
+- **Database & Migrazioni (Liquibase)**:
+  - Tutte le modifiche al DB devono passare da Liquibase in `src/main/resources/db/`.
+  - ID incrementali: `db.changelog-001-...` fino all'ultimo presente. MAI modificare changelog già committati.
+  - Per modifiche (es. nuove colonne): creare un nuovo changelog con `addColumn` (NON usare `runOnChange="true"` su tabelle).
+  - Aggiungere sempre il nuovo file in `db.changelog-master.xml`.
+- **AWS S3 Storage**:
+  - Bucket: `musicapp-017719539384-eu-south-1-an` (region: `eu-south-1`).
+  - Convenzione percorso file: `{tipo}/{id}/{filename}` (es. `audio/123/song.mp3`, `profile/456/avatar.jpg`, `apk/spotifai-latest.apk`).
+  - Cancellare sempre il vecchio file su S3 prima di sostituirlo o eliminarlo.
 
-### DTO Layer
-- Use DTOs for request/response, never expose entities directly
-- DTOs in `dto/` package
-- DTO fields match entity fields but without JPA annotations
-- All DTOs have Lombok annotations (@Data, @NoArgsConstructor, @AllArgsConstructor)
+### 2. Frontend & Riproduzione Audio
+- **Stato Audio Globale**: Gestito unicamente da `AudioContext.tsx`. Non creare player locali nelle schermate; usare `useAudio()`.
+- **Player Fisso**: `GlobalMiniPlayer.tsx` è montato a livello globale in `App.tsx` ed è visibile sopra le tab di navigazione quando un brano è in riproduzione.
+- **Chiamate REST**: Centralizzate in `frontend/services/api.ts`.
+- **Tema & UI**: Palette coerente con tema scuro Spotify in `frontend/services/theme.ts`.
 
-### Service Layer
-- Service classes in `service/` package
-- Use `@Service` annotation
-- Use `@RequiredArgsConstructor` for dependency injection
-- Convert between entities and DTOs in service methods
-- Business logic belongs in services
+---
 
-### Controller Layer
-- Controllers in `controller/` package
-- Use `@RestController` annotation
-- Base path: `/api/v1`
-- RESTful endpoints: GET, POST, PUT, DELETE
-- Use `ApiResponse<T>` wrapper for all responses with `data`, `message`, `status` fields
-- Use `@RequiredArgsConstructor` for dependency injection
-- Handle exceptions with appropriate HTTP status codes
+## 🗄️ Specifiche Schema Database
 
-### Database Migrations (Liquibase)
-- All database changes MUST go through Liquibase migrations
-- Migration files in `src/main/resources/db/`
-- Use incremental IDs: `db.changelog-001-create-utente.xml`, `db.changelog-002-create-artista.xml`
-- Always create a NEW changelog file for each entity or major change
-- Never modify existing migration files once committed
-- Include rollback scripts for destructive changes
-- Do NOT use `runOnChange="true"` for table creation changesets (only for data modifications)
-- For new columns: create a new changeset (e.g., `db.changelog-006-add-column.xml`) with `addColumn` instead of recreating tables
-- For structural changes: always create new incremental changesets rather than modifying existing ones
-- If a migration fails, delete the failed changeset from `databasechangelog` table and restart
+- **Utente**: `id`, `nome`, `cognome`, `email` (unique), `password` (BCrypt), `urlImmagineProfilo` (nullable, S3).
+- **Artista**: `id`, `nome`, `urlImmagine` (nullable, S3). Many-to-Many con Album e Canzone.
+- **Canzone**: `id`, `urlFileAudio` (required, S3), `anno` (nullable), `urlImmagine` (nullable, S3), `nome`. Many-to-Many con Artista, Many-to-One con Album.
+- **Album**: `id`, `nome` (required), `anno` (nullable), `urlImmagine` (nullable, S3). Many-to-Many con Artista, One-to-Many con Canzone.
+- **Playlist**: `id`, `nome`, associazione `playlist_canzone`.
+- **AppVersion**: `id`, `version`, `apkUrl`, `releaseNotes`, `mandatory`, `createdAt`.
 
-### API Conventions
-- RESTful endpoints
-- Base path: `/api/v1`
-- Use DTOs for request/response, never expose entities directly
-- Response format: standard JSON with `data`, `message`, `status` fields
-- Endpoints:
-  - `/artisti` - CRUD operations for artists
-  - `/album` - CRUD operations for albums
-  - `/canzoni` - CRUD operations for songs
-- Use `ApiResponse<T>` wrapper for consistent responses
+---
 
-### S3 Storage
-- Audio files stored in S3 bucket `musicapp-017719539384-eu-south-1-an`
-- Profile images stored in S3 bucket
-- Use Spring Cloud AWS for S3 integration
-- File naming convention: `{type}/{id}/{filename}` (e.g., `audio/123/song.mp3`, `profile/456/avatar.jpg`)
-- Region: eu-south-1
+## 🚀 Aggiornamenti APK (In-App Updater)
 
-## Frontend Conventions
+L'app include un sistema di self-update all'avvio:
+- Il backend espone gli endpoint `/api/v1/app/version`, `/api/v1/app/download` e `/api/v1/app/upload-apk`.
+- `App.tsx` confronta `CURRENT_VERSION` con la versione restituita da `/api/v1/app/version`. Se inferiore, mostra `UpdateModal.tsx` per scaricare e installare il nuovo file APK.
 
-### Component Structure
-- Functional components with hooks
-- TypeScript for type safety
-- Component files in PascalCase (e.g., `UserProfile.tsx`, `Player.tsx`)
-- Main app file is `App.tsx`
-- Expo uses file-based routing in the `app/` directory
-
-### API Calls
-- Use a centralized API service module
-- All API calls through a single service file
-- Proper error handling and loading states
-
-### Mobile-Specific
-- Use Expo for cross-platform development
-- Follow React Native best practices
-- Platform-specific code when necessary (iOS vs Android)
-- Test on both platforms using Expo Go app or emulators
-
-## Build and Run Commands
-
-### Backend
-```bash
-# Start PostgreSQL (from project root)
-docker-compose up -d
-
-# Run application
-cd backend
-mvn spring-boot:run
-
-# Build
-mvn clean package
-
-# Run tests
-mvn test
-```
-
-### Frontend
-```bash
-cd frontend
-# Install dependencies
-npm install
-
-# Start Expo development server
-npm start
-
-# Run on iOS (requires macOS or Expo Go app)
-npm run ios
-
-# Run on Android (requires Android emulator or Expo Go app)
-npm run android
-
-# Run on web
-npm run web
-```
-
-## Environment Variables
-
-The `.env` file in backend root (NOT committed to git) should contain:
-```
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-```
-
-Note: Database credentials are in application.yml for development. For production, move them to environment variables.
-
-AWS Configuration:
-- Bucket: musicapp-017719539384-eu-south-1-an
-- Region: eu-south-1
-
-## Database Schema Rules
-
-### Utente Entity
-- Fields: id, nome, cognome, email, password, urlImmagineProfilo
-- Email must be unique
-- Password should be hashed (BCrypt)
-- urlImmagineProfilo is nullable
-
-### Artista Entity
-- Fields: id, nome, urlImmagine
-- urlImmagine is nullable (stored in S3)
-- Many-to-many relationship with Album
-- Many-to-many relationship with Canzone
-
-### Canzone Entity
-- Fields: id, urlFileAudio, anno, urlImmagine
-- urlFileAudio is required (stored in S3)
-- anno is nullable
-- urlImmagine is nullable (stored in S3)
-- Many-to-many relationship with Artista
-- Many-to-one relationship with Album
-
-### Album Entity
-- Fields: id, nome, anno, urlImmagine
-- nome is required
-- anno is nullable
-- urlImmagine is nullable (stored in S3)
-- Many-to-many relationship with Artista
-- One-to-many relationship with Canzone
-
-### General Rules
-- Use `VARCHAR` for text fields with appropriate length
-- Use `TIMESTAMP` for dates
-- Use `BOOLEAN` for flags
-- Add `created_at` and `updated_at` timestamps to all tables
-- Add indexes on foreign keys and frequently queried fields
-
-## Testing
-
-### Backend
-- Unit tests for services
-- Integration tests for repositories
-- API tests for controllers
-
-### Frontend
-- Component tests with React Native Testing Library
-- E2E tests with Detox (if needed)
-
-## Before Making Changes
-
-1. Read this AGENTS.md file to understand conventions
-2. Check existing patterns in the codebase
-3. Create Liquibase migration for any database changes
-4. Follow the established folder structure
-5. Use existing dependencies before adding new ones
-6. Test changes locally before committing
-
-## Git Workflow
-
-- Feature branches: `feature/description`
-- Commit messages: Conventional Commits format
-- Never commit secrets or API keys
-- Run tests before committing
-
-## APK Release & Update Workflow (Spotifai)
-
-L'applicazione dispone di un sistema di aggiornamento automatico all'avvio:
-- Il backend espone gli endpoint `/api/v1/app/version` (controllo versione), `/api/v1/app/download` (download diretto APK da S3) e `/api/v1/app/upload-apk` (caricamento e sostituzione automatica del vecchio APK).
-- All'avvio dell'app mobile, `App.tsx` confronta `CURRENT_VERSION` con la versione sul server; se inferiore, mostra la modale `UpdateModal` per scaricare e installare il nuovo APK sovrascrivendo la versione corrente senza perdere dati.
-
-### Procedura per rilasciare un aggiornamento dell'APK:
-
-1. **Incrementare la versione**:
-   - In `frontend/app.json`: aggiornare `"version"` (es. da `"1.0.0"` a `"1.0.1"`).
-   - In `frontend/App.tsx`: aggiornare la costante `CURRENT_VERSION = '1.0.1'`.
-
-2. **Compilare il nuovo APK Android**:
+### Procedura per rilasciare un aggiornamento APK:
+1. In `frontend/app.json`: aggiornare `"version"` (es. da `"1.0.0"` a `"1.0.1"`).
+2. In `frontend/App.tsx`: aggiornare la costante `CURRENT_VERSION = '1.0.1'`.
+3. Compilare il nuovo file sempre su cloud EAS (NON in locale):
    ```bash
    cd frontend
-   # Con EAS Build (build standalone APK locale o cloud)
-   eas build --platform android --profile preview --local
-   # Oppure se si usa il comando Expo prebuild:
-   # npx expo run:android --variant release
+   eas build --platform android --profile preview
    ```
+4. Registrare/caricare il nuovo file APK:
+   - Registrazione URL: `curl -X POST "https://music.davideluisi.com/api/v1/app/register-version" -d "version=1.0.1" -d "apkUrl=..." -d "releaseNotes=..."`
+   - Oppure upload binario su S3: `curl -X POST "https://music.davideluisi.com/api/v1/app/upload-apk" -F "file=@app.apk" -F "version=1.0.1"`
 
-3. **Registrare o caricare il nuovo APK**:
-   È possibile registrare la nuova versione direttamente indicando l'URL dell'archivio (es. generato da EAS):
-   ```bash
-   curl -X POST "https://music.davideluisi.com/api/v1/app/register-version" \
-     -d "version=1.0.1" \
-     -d "apkUrl=https://expo.dev/artifacts/eas/..." \
-     -d "releaseNotes=Descrizione delle novità o fix inclusi" \
-     -d "mandatory=false"
-   ```
-   Oppure inviare il file APK binario completo su S3:
-   ```bash
-   curl -X POST "https://music.davideluisi.com/api/v1/app/upload-apk" \
-     -F "file=@percorso/del/tuo-spotifai.apk" \
-     -F "version=1.0.1" \
-     -F "releaseNotes=Descrizione delle novità o fix inclusi" \
-     -F "mandatory=false"
-   ```
-   *Nota: L'endpoint cancella automaticamente il file precedente su S3 (`apk/spotifai-latest.apk`) prima di salvare quello nuovo, evitando sprechi di memoria.*
+---
 
+## 🛠️ Comandi di Base Frequenti
+
+| Task | Cartella | Comando |
+| :--- | :--- | :--- |
+| Avvia DB PostgreSQL | Root (`/`) | `docker-compose up -d` |
+| Avvia Backend | `backend/` | `mvn spring-boot:run` |
+| Compila Backend (no test) | `backend/` | `mvn clean package -DskipTests` |
+| Test Backend | `backend/` | `mvn test` |
+| Avvia Expo Frontend | `frontend/` | `npx expo start` |
+| Compilazione APK (EAS Cloud) | `frontend/` | `eas build --platform android --profile preview` |
+| Verifica Tipi TypeScript | `frontend/` | `npx tsc --noEmit` |
+| Diagnosi Expo | `frontend/` | `npx expo-doctor` |
+
+---
+
+## 📝 Linee Guida per Modifiche al Codice (Checklist Agente)
+1. Leggere questo file per conoscere convenzioni e percorsi senza scansionare cartelle.
+2. Per modifiche al DB: creare sempre un nuovo file changeset Liquibase incrementale (mai modificare file preesistenti).
+3. Non esporre Entity JPA nei controller: usare sempre DTO e `ApiResponse<T>`.
+4. Nel frontend, non istanziare player audio duplicati: appoggiarsi sempre a `AudioContext`.
+5. Non committare segreti, credenziali o file `.env`.
