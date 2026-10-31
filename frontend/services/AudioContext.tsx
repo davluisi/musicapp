@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { showDialog } from './DialogContext';
-import { createAudioPlayer, AudioPlayer, setAudioModeAsync, AudioStatus, AudioMetadata } from 'expo-audio';
+import TrackPlayer, {
+  Capability,
+  Event,
+  State,
+  usePlaybackState,
+  useProgress,
+  Track,
+} from 'react-native-track-player';
 import { Song, getMediaUrl, getSongCoverUrl, songApi, playlistApi } from './api';
 
 export interface AudioContextType {
@@ -45,11 +52,48 @@ export interface AudioContextType {
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
 
+let isSetup = false;
+async function setupPlayerIfNeeded() {
+  if (isSetup) return;
+  try {
+    await TrackPlayer.setupPlayer({
+      autoHandleInterruptions: true,
+    });
+    await TrackPlayer.updateOptions({
+      capabilities: [
+        Capability.Play,
+        Capability.Pause,
+        Capability.SkipToNext,
+        Capability.SkipToPrevious,
+        Capability.SeekTo,
+        Capability.Stop,
+      ],
+      compactCapabilities: [
+        Capability.SkipToPrevious,
+        Capability.Play,
+        Capability.Pause,
+        Capability.SkipToNext,
+      ],
+      notificationCapabilities: [
+        Capability.Play,
+        Capability.Pause,
+        Capability.SkipToNext,
+        Capability.SkipToPrevious,
+        Capability.SeekTo,
+      ],
+    });
+    isSetup = true;
+  } catch (e: any) {
+    if (e?.message?.includes('already been initialized')) {
+      isSetup = true;
+    } else {
+      console.warn('TrackPlayer setup error:', e);
+    }
+  }
+}
+
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeSong, setActiveSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackPosition, setPlaybackPosition] = useState<number>(0);
-  const [playbackDuration, setPlaybackDuration] = useState<number>(0);
   const [detailModalVisible, setDetailModalVisible] = useState<boolean>(false);
   const [songOptionsMenuVisible, setSongOptionsMenuVisible] = useState<boolean>(false);
   const [songForOptions, setSongForOptions] = useState<Song | null>(null);
@@ -64,32 +108,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const currentIndexRef = useRef<number>(-1);
   const shufflePoolRef = useRef<Song[]>([]);
 
-  const playerRef = useRef<AudioPlayer | null>(null);
-  const listenerSubRef = useRef<{ remove: () => void } | null>(null);
+  // TrackPlayer hooks
+  const playbackStateObj = usePlaybackState();
+  const playbackState = (playbackStateObj as any)?.state ?? playbackStateObj;
+  const isPlaying = playbackState === State.Playing;
 
-  useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      interruptionMode: 'doNotMix',
-      shouldPlayInBackground: true,
-      allowsRecording: false,
-    }).catch(err => console.warn('Error setting audio mode:', err));
-
-    return () => {
-      if (listenerSubRef.current) {
-        listenerSubRef.current.remove();
-        listenerSubRef.current = null;
-      }
-      if (playerRef.current) {
-        try {
-          playerRef.current.remove();
-        } catch (e) {
-          // ignore
-        }
-        playerRef.current = null;
-      }
-    };
-  }, []);
+  const progress = useProgress(500);
+  const playbackPosition = progress.position;
+  const playbackDuration = progress.duration;
 
   const getSongTitle = (song: Song) => {
     if (song.nome && song.nome.trim()) return song.nome;
@@ -106,47 +132,70 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const buildSongMetadata = (song: Song): AudioMetadata => {
-    const title = getSongTitle(song);
+  const toTrack = (song: Song): Track => {
+    const audioUrl = getMediaUrl(song.urlFileAudio!);
+    const coverUrl = getSongCoverUrl(song) || undefined;
     const artist = song.artisti && song.artisti.length > 0
-      ? song.artisti.map(a => a.nome).join(', ')
-      : undefined;
-    const albumTitle = song.album?.nome || undefined;
-    const artworkUrl = getSongCoverUrl(song) || undefined;
+      ? song.artisti.map((a) => a.nome).join(', ')
+      : 'Artista Sconosciuto';
 
     return {
-      title,
+      id: String(song.id),
+      url: audioUrl,
+      title: getSongTitle(song),
       artist,
-      albumTitle,
-      artworkUrl,
+      album: song.album?.nome || undefined,
+      artwork: coverUrl,
+      duration: undefined,
     };
   };
 
-  const stopAndClearPlayer = () => {
-    if (listenerSubRef.current) {
-      listenerSubRef.current.remove();
-      listenerSubRef.current = null;
-    }
-    if (playerRef.current) {
-      try {
-        if (typeof (playerRef.current as any).clearLockScreenControls === 'function') {
-          (playerRef.current as any).clearLockScreenControls();
+  useEffect(() => {
+    setupPlayerIfNeeded();
+
+    const trackChangeListener = TrackPlayer.addEventListener(
+      Event.PlaybackActiveTrackChanged,
+      async (event) => {
+        if (event.track) {
+          const trackId = Number(event.track.id);
+          const found = queueRef.current.find((s) => s.id === trackId);
+          if (found) {
+            setActiveSong(found);
+            const idx = queueRef.current.findIndex((s) => s.id === trackId);
+            if (idx >= 0) {
+              currentIndexRef.current = idx;
+            }
+          }
         }
-        playerRef.current.pause();
-        playerRef.current.remove();
-      } catch (e) {
-        console.warn('Error clearing audio player:', e);
       }
-      playerRef.current = null;
+    );
+
+    const queueEndedListener = TrackPlayer.addEventListener(
+      Event.PlaybackQueueEnded,
+      () => {
+        if (shufflePoolRef.current.length > 0) {
+          nextSong();
+        }
+      }
+    );
+
+    return () => {
+      trackChangeListener.remove();
+      queueEndedListener.remove();
+    };
+  }, []);
+
+  const stopAndClearPlayer = async () => {
+    try {
+      await TrackPlayer.reset();
+    } catch (e) {
+      console.warn('Error resetting TrackPlayer:', e);
     }
     queueRef.current = [];
     currentIndexRef.current = -1;
     shufflePoolRef.current = [];
     setQueue([]);
     setActiveSong(null);
-    setIsPlaying(false);
-    setPlaybackPosition(0);
-    setPlaybackDuration(0);
   };
 
   const playSongInternal = async (song: Song, autoStart = true): Promise<void> => {
@@ -155,104 +204,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    const currentPlayer = playerRef.current;
-    if (listenerSubRef.current) {
-      listenerSubRef.current.remove();
-      listenerSubRef.current = null;
-    }
-    if (currentPlayer) {
-      try {
-        currentPlayer.pause();
-        currentPlayer.remove();
-      } catch (e) {
-        console.warn('Error releasing previous player:', e);
-      }
-      playerRef.current = null;
-    }
-
+    await setupPlayerIfNeeded();
     setActiveSong(song);
-    setIsPlaying(autoStart);
-    setPlaybackPosition(0);
-    setPlaybackDuration(0);
 
-    const audioStreamUrl = getMediaUrl(song.urlFileAudio);
-    console.log('🎵 Tentativo riproduzione audioStreamUrl:', audioStreamUrl);
-    const newPlayer = createAudioPlayer(audioStreamUrl, {
-      downloadFirst: false,
-    });
-    playerRef.current = newPlayer;
-
-    const sub = newPlayer.addListener('playbackStatusUpdate', (status: any) => {
-      // Gestione comandi da tendina di notifica / lockscreen
-      if (status?.action === 'nextTrack') {
-        nextSong();
-        return;
-      }
-      if (status?.action === 'previousTrack') {
-        restartSong();
-        return;
-      }
-
-      if (status.error) {
-        console.error('Audio playback error in status:', status.error, 'per URL:', audioStreamUrl);
-        showDialog('Errore Audio', 'Impossibile riprodurre: ' + status.error + '\nURL: ' + audioStreamUrl);
-        setIsPlaying(false);
-        return;
-      }
-      if (status.didJustFinish) {
-        if (shufflePoolRef.current.length > 0) {
-          const pool = shufflePoolRef.current.filter(track => !!track.urlFileAudio);
-          const others = pool.filter(track => track.id !== song.id);
-          const choices = others.length > 0 ? others : pool;
-          const nextTrack = choices[Math.floor(Math.random() * choices.length)];
-          if (nextTrack) {
-            playSongInternal(nextTrack, true);
-            return;
-          }
-        }
-        // Brano finito: avanza automaticamente al prossimo nella coda se presente
-        const nextIndex = currentIndexRef.current + 1;
-        if (queueRef.current.length > 0 && nextIndex < queueRef.current.length) {
-          currentIndexRef.current = nextIndex;
-          const nextTrack = queueRef.current[nextIndex];
-          playSongInternal(nextTrack, true);
-        } else {
-          // Fine della coda o riproduzione singola terminata
-          setIsPlaying(false);
-          setPlaybackPosition(0);
-        }
-        return;
-      }
-
-      if (status.isLoaded) {
-        setIsPlaying(status.playing);
-        if (status.currentTime != null) {
-          setPlaybackPosition(status.currentTime);
-        }
-        if (status.duration != null && status.duration > 0) {
-          setPlaybackDuration(status.duration);
-        }
-      }
-    });
-    listenerSubRef.current = sub;
-
-    // Attiva i controlli permanenti nella tendina notifiche e a schermo bloccato (stile Spotify)
     try {
-      if (typeof (newPlayer as any).setActiveForLockScreen === 'function') {
-        const metadata = buildSongMetadata(song);
-        (newPlayer as any).setActiveForLockScreen(true, metadata, {
-          showSeekForward: false,
-          showSeekBackward: false,
-          showNextTrack: true,
-          showPreviousTrack: true,
-        });
+      await TrackPlayer.reset();
+      await TrackPlayer.add(toTrack(song));
+      if (autoStart) {
+        await TrackPlayer.play();
       }
-    } catch (e) {
-      console.warn('Impossibile attivare controlli di riproduzione permanente / lock screen:', e);
-    }
-
-    if (autoStart) {
-      newPlayer.play();
+    } catch (err) {
+      console.error('TrackPlayer play error:', err);
+      showDialog('Errore Audio', 'Impossibile riprodurre la traccia.');
     }
   };
 
@@ -262,71 +225,56 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    const currentPlayer = playerRef.current;
-
-    // Se è la stessa canzone attiva: commuta play/pausa
-    if (activeSong?.id === song.id && currentPlayer) {
+    if (activeSong?.id === song.id) {
       if (isPlaying) {
-        currentPlayer.pause();
-        setIsPlaying(false);
+        await TrackPlayer.pause();
       } else {
-        currentPlayer.play();
-        setIsPlaying(true);
+        await TrackPlayer.play();
       }
       return;
     }
 
-    // Nuova traccia singola: esce dalla riproduzione casuale
     shufflePoolRef.current = [];
     queueRef.current = [song];
     currentIndexRef.current = 0;
     setQueue([song]);
 
-    try {
-      await playSongInternal(song, autoStart);
-    } catch (err) {
-      console.error('Error loading or playing song:', err);
-      showDialog('Errore Riproduzione', 'Impossibile riprodurre il file audio.');
-      setIsPlaying(false);
-    }
+    await playSongInternal(song, autoStart);
   };
 
   const playQueue = async (songsList: Song[], startIndex = 0) => {
-    if (!songsList || songsList.length === 0) {
-      showDialog('Nessun brano', 'Questo album non contiene brani da riprodurre');
+    const playable = songsList.filter((track) => !!track.urlFileAudio);
+    if (!playable || playable.length === 0) {
+      showDialog('Nessun brano', 'Questo album o elenco non contiene brani validi da riprodurre');
       return;
     }
 
-    const safeIndex = Math.max(0, Math.min(songsList.length - 1, startIndex));
+    const safeIndex = Math.max(0, Math.min(playable.length - 1, startIndex));
     shufflePoolRef.current = [];
-    queueRef.current = songsList;
+    queueRef.current = playable;
     currentIndexRef.current = safeIndex;
-    setQueue(songsList);
+    setQueue(playable);
 
-    const initialSong = songsList[safeIndex];
+    await setupPlayerIfNeeded();
+    const tracks = playable.map(toTrack);
     try {
-      await playSongInternal(initialSong, true);
+      await TrackPlayer.reset();
+      await TrackPlayer.add(tracks);
+      await TrackPlayer.skip(safeIndex);
+      await TrackPlayer.play();
+      setActiveSong(playable[safeIndex]);
     } catch (err) {
       console.error('Error starting queue playback:', err);
-      showDialog('Errore Riproduzione', 'Impossibile riprodurre i brani.');
+      showDialog('Errore Riproduzione', 'Impossibile avviare la riproduzione della coda.');
     }
   };
 
-  const handleMiniPlayerToggle = () => {
-    const currentPlayer = playerRef.current;
-    if (!currentPlayer) {
-      if (activeSong) {
-        togglePlaySong(activeSong, true);
-      }
-      return;
-    }
-
+  const handleMiniPlayerToggle = async () => {
+    if (!activeSong) return;
     if (isPlaying) {
-      currentPlayer.pause();
-      setIsPlaying(false);
+      await TrackPlayer.pause();
     } else {
-      currentPlayer.play();
-      setIsPlaying(true);
+      await TrackPlayer.play();
     }
   };
 
@@ -382,41 +330,28 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const handleSeek = (ratio: number) => {
-    const currentPlayer = playerRef.current;
-    if (currentPlayer && playbackDuration > 0) {
+  const handleSeek = async (ratio: number) => {
+    if (playbackDuration > 0) {
       const targetTime = Math.max(0, Math.min(playbackDuration, ratio * playbackDuration));
       try {
-        if (typeof (currentPlayer as any).seekTo === 'function') {
-          (currentPlayer as any).seekTo(targetTime);
-          setPlaybackPosition(targetTime);
-        }
+        await TrackPlayer.seekTo(targetTime);
       } catch (e) {
         console.warn('Seek error:', e);
       }
     }
   };
 
-  const restartSong = () => {
-    const currentPlayer = playerRef.current;
-    if (currentPlayer) {
-      try {
-        if (typeof (currentPlayer as any).seekTo === 'function') {
-          (currentPlayer as any).seekTo(0);
-          setPlaybackPosition(0);
-          if (!isPlaying) {
-            currentPlayer.play();
-            setIsPlaying(true);
-          }
-          return;
-        }
-      } catch (e) {
-        console.warn('restartSong seekTo error:', e);
+  const restartSong = async () => {
+    try {
+      await TrackPlayer.seekTo(0);
+      if (!isPlaying) {
+        await TrackPlayer.play();
       }
-    }
-    // Fallback: se il player non supporta seekTo o non è pronto, ricarica la canzone attiva
-    if (activeSong) {
-      togglePlaySong(activeSong, true);
+    } catch (e) {
+      console.warn('restartSong seekTo error:', e);
+      if (activeSong) {
+        togglePlaySong(activeSong, true);
+      }
     }
   };
 
@@ -426,10 +361,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    if (activeSong?.id === song.id && playerRef.current) {
+    if (activeSong?.id === song.id) {
       if (!isPlaying) {
-        playerRef.current.play();
-        setIsPlaying(true);
+        await TrackPlayer.play();
       }
       return;
     }
@@ -468,7 +402,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setQueue(list);
   };
 
-  const enqueueSong = (song: Song, where: 'next' | 'last') => {
+  const enqueueSong = async (song: Song, where: 'next' | 'last') => {
     if (!song.urlFileAudio) {
       showDialog('File Audio Mancante', 'Questa canzone non ha un file audio collegato');
       return;
@@ -492,11 +426,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (where === 'last') {
         rememberQueue([...list, song], index);
+        try {
+          await TrackPlayer.add(toTrack(song));
+        } catch (e) {}
         showDialog('In coda', `"${title}" è stato aggiunto in fondo alla coda.`);
       } else {
         const next = [...list];
         next.splice(index + 1, 0, song);
         rememberQueue(next, index);
+        try {
+          await TrackPlayer.add(toTrack(song), index + 1);
+        } catch (e) {}
         showDialog('Riproduci dopo', `"${title}" sarà il prossimo brano.`);
       }
       return;
@@ -504,6 +444,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const next = where === 'last' ? [...list, song] : [song, ...list];
     rememberQueue(next, -1);
+    try {
+      await TrackPlayer.add(toTrack(song));
+    } catch (e) {}
     showDialog('In coda', `"${title}" è stato aggiunto alla coda.`);
   };
 
@@ -523,37 +466,43 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const startShufflePlayback = async (songsList: Song[]) => {
-    const playable = songsList.filter(track => !!track.urlFileAudio);
+    const playable = songsList.filter((track) => !!track.urlFileAudio);
     if (playable.length === 0) {
       showDialog('Nessun brano', 'Non ci sono brani da riprodurre');
       return;
     }
 
-    shufflePoolRef.current = playable;
-    queueRef.current = [];
-    currentIndexRef.current = -1;
-    setQueue([]);
+    // Mescola in modo casuale l'elenco
+    const shuffled = [...playable].sort(() => Math.random() - 0.5);
+    shufflePoolRef.current = shuffled;
+    queueRef.current = shuffled;
+    currentIndexRef.current = 0;
+    setQueue(shuffled);
 
-    const first = playable[Math.floor(Math.random() * playable.length)];
+    await setupPlayerIfNeeded();
+    const tracks = shuffled.map(toTrack);
     try {
-      await playSongInternal(first, true);
+      await TrackPlayer.reset();
+      await TrackPlayer.add(tracks);
+      await TrackPlayer.play();
+      setActiveSong(shuffled[0]);
     } catch (err) {
       console.error('Error starting shuffle playback:', err);
       shufflePoolRef.current = [];
-      showDialog('Errore Riproduzione', 'Impossibile riprodurre i brani.');
+      showDialog('Errore Riproduzione', 'Impossibile avviare riproduzione casuale.');
     }
   };
 
-  const nextSong = () => {
-    if (shufflePoolRef.current.length > 0) {
-      const pool = shufflePoolRef.current.filter(track => !!track.urlFileAudio);
-      const others = activeSong ? pool.filter(track => track.id !== activeSong.id) : pool;
-      const choices = others.length > 0 ? others : pool;
-      const nextTrack = choices[Math.floor(Math.random() * choices.length)];
-      if (nextTrack) {
-        playSongInternal(nextTrack, true);
+  const nextSong = async () => {
+    try {
+      const activeIdx = await TrackPlayer.getActiveTrackIndex();
+      const queueList = await TrackPlayer.getQueue();
+      if (activeIdx !== undefined && activeIdx < queueList.length - 1) {
+        await TrackPlayer.skipToNext();
         return;
       }
+    } catch (e) {
+      // Fallback manuale su queueRef
     }
 
     const nextIndex = currentIndexRef.current + 1;
