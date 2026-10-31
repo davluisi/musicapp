@@ -112,7 +112,11 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
 +
 +      return acceptedResultBuilder.build()
      } catch (e: Exception) {
-@@ -83,4 +87,22 @@ class AudioMediaSessionCallback(
+@@ -83,6 +87,24 @@ class AudioMediaSessionCallback(
+       AudioControlsService.ACTION_PREVIOUS_TRACK -> {
+         service.previousTrack()
+         Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+       }
        else -> super.onCustomCommand(session, controller, command, args)
      }
    }
