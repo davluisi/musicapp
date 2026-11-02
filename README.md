@@ -1,4 +1,4 @@
-# 🎵 Spotifai (MusicApp)
+# 🎵 MusicApp
 
 Una piattaforma di streaming musicale full-stack e mobile-first ispirata a Spotify, con backend in **Spring Boot 3**, persistenza su **PostgreSQL** e **AWS S3**, e client mobile in **React Native** con **Expo**.
 
@@ -17,7 +17,7 @@ Una piattaforma di streaming musicale full-stack e mobile-first ispirata a Spoti
 
 ## 🧠 Panoramica e Funzionamento
 
-Spotifai è un'applicazione mobile completa per la consultazione e la riproduzione di musica in streaming, progettata per offrire un'esperienza reattiva e fluida:
+MusicApp è un'applicazione mobile completa per la consultazione e la riproduzione di musica in streaming, progettata per offrire un'esperienza reattiva e fluida:
 
 - **Client Mobile (Expo & React Native)**:
   - Interfaccia scura coerente con lo stile di Spotify (palette `#121212`, accenti verdi `#1DB954`).
