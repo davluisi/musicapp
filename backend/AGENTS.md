@@ -60,11 +60,11 @@ com.musicapp/
    - MAI modificare changeset già applicati/committati.
    - Usare `addColumn` o script mirati per modifiche di colonne.
 
-3. **Storage S3 (`musicapp-017719539384-eu-south-1-an`)**:
+3. **Storage S3**:
+   - Gestito tramite configurazione e variabili d'ambiente (`AWS_S3_BUCKET`).
    - Convenzione path file: `{tipo}/{id}/{filename}` (es. `audio/12/canzone.mp3`, `profile/3/avatar.jpg`, `apk/spotifai-latest.apk`).
    - All'aggiornamento o eliminazione di file (audio, copertina o APK), chiamare il servizio di rimozione su S3 per evitare spreco di memoria.
 
 4. **Comandi Utili**:
    - Build rapida: `mvn clean package -DskipTests` (nella cartella `backend`)
    - Esecuzione locale: `mvn spring-boot:run`
-

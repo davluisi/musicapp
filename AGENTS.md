@@ -15,8 +15,9 @@ Per informazioni dettagliate su ciascuna componente, fare riferimento direttamen
 
 ```text
 musicapp/
+├── README.md                                # Panoramica, stack e architettura del progetto
 ├── AGENTS.md                                # Contesto globale e indice del workspace (questo file)
-├── docker-compose.yml                       # Container PostgreSQL (porta 5432)
+├── docker-compose.yml                       # Container PostgreSQL per sviluppo locale
 │
 ├── backend/                                 # Modulo Backend Spring Boot
 │   ├── AGENTS.md                            # Dettagli architettura backend, convenzioni e servizi
@@ -76,7 +77,7 @@ musicapp/
   - Per modifiche (es. nuove colonne): creare un nuovo changelog con `addColumn` (NON usare `runOnChange="true"` su tabelle).
   - Aggiungere sempre il nuovo file in `db.changelog-master.xml`.
 - **AWS S3 Storage**:
-  - Bucket: `musicapp-017719539384-eu-south-1-an` (region: `eu-south-1`).
+  - Configurato tramite variabili d'ambiente (`AWS_S3_BUCKET`, `AWS_REGION`, credenziali AWS).
   - Convenzione percorso file: `{tipo}/{id}/{filename}` (es. `audio/123/song.mp3`, `profile/456/avatar.jpg`, `apk/spotifai-latest.apk`).
   - Cancellare sempre il vecchio file su S3 prima di sostituirlo o eliminarlo.
 
@@ -114,8 +115,8 @@ L'app include un sistema di self-update all'avvio:
    eas build --platform android --profile preview
    ```
 4. Registrare/caricare il nuovo file APK:
-   - Registrazione URL: `curl -X POST "https://music.davideluisi.com/api/v1/app/register-version" -d "version=1.0.1" -d "apkUrl=..." -d "releaseNotes=..."`
-   - Oppure upload binario su S3: `curl -X POST "https://music.davideluisi.com/api/v1/app/upload-apk" -F "file=@app.apk" -F "version=1.0.1"`
+   - Registrazione URL: `curl -X POST "<API_BASE_URL>/app/register-version" -d "version=1.0.1" -d "apkUrl=..." -d "releaseNotes=..."`
+   - Oppure upload binario su S3: `curl -X POST "<API_BASE_URL>/app/upload-apk" -F "file=@app.apk" -F "version=1.0.1"`
 
 ---
 
