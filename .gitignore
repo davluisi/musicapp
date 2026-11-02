@@ -16,3 +16,6 @@ Thumbs.db
 
 # Android APKs
 *.apk
+
+# Local run scripts with personal credentials/SSH
+run_be.bat
